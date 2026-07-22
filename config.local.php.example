@@ -1,0 +1,23 @@
+<?php
+
+declare(strict_types=1);
+
+/**
+ * Copie este arquivo para config.local.php (não versionado) e preencha
+ * com as credenciais reais do ambiente. config.local.php nunca deve ir
+ * para o git.
+ */
+
+return [
+    'db' => [
+        'host' => 'localhost',
+        'name' => 'wedding_db',
+        'user' => 'wedding_user',
+        'pass' => 'troque-esta-senha',
+    ],
+    'cors' => [
+        'allowed_origins' => [
+            'https://wedding.pedroluca.dev.br',
+        ],
+    ],
+];

@@ -1,0 +1,14 @@
+RewriteEngine On
+
+# Bloqueia acesso direto a pastas e arquivos que não devem ser servidos.
+RewriteRule ^(sql|scripts|src|handlers)(/|$) - [F,L]
+RewriteRule ^config\.local\.php$ - [F,L]
+RewriteRule ^config\.local\.php\.example$ - [F,L]
+RewriteRule \.sql$ - [F,L]
+
+Options -Indexes
+
+# Encaminha tudo que não for um arquivo/pasta real para o roteador.
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteRule ^ index.php [QSA,L]

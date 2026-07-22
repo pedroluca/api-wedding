@@ -1,0 +1,40 @@
+<?php
+
+declare(strict_types=1);
+
+function json_response(int $status, array $data): void
+{
+    http_response_code($status);
+    header('Content-Type: application/json; charset=utf-8');
+    echo json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    exit;
+}
+
+function json_error(int $status, string $message): void
+{
+    json_response($status, ['error' => $message]);
+}
+
+function json_body(): array
+{
+    $raw = file_get_contents('php://input');
+    if ($raw === false || $raw === '') {
+        return [];
+    }
+
+    $data = json_decode($raw, true);
+    return is_array($data) ? $data : [];
+}
+
+function require_string(array $body, string $key, int $maxLength = 190): string
+{
+    $value = trim((string) ($body[$key] ?? ''));
+    if ($value === '') {
+        json_error(422, "Campo obrigatório: {$key}.");
+    }
+    if (mb_strlen($value) > $maxLength) {
+        json_error(422, "Campo muito longo: {$key}.");
+    }
+
+    return $value;
+}
