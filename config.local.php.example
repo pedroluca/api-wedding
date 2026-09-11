@@ -20,4 +20,11 @@ return [
             'https://wedding.pedroluca.dev.br',
         ],
     ],
+    'mail' => [
+        'api_key' => 'coloque-a-api-key-da-resend-aqui',
+        'from' => 'Presenzo <convites@seudominio.com>',
+    ],
+    'app' => [
+        'frontend_url' => 'https://wedding.pedroluca.dev.br',
+    ],
 ];

@@ -3,16 +3,18 @@
 declare(strict_types=1);
 
 /**
- * GET /guests/{slug}
+ * GET /events/{eventSlug}/guests/{guestSlug}
  * Retorna o titular do link e todos os membros do grupo (ele + dependentes)
  * para montar a tela de convite/confirmação.
  */
-function handle_get_guest(PDO $pdo, string $slug): void
+function handle_get_guest(PDO $pdo, string $eventSlug, string $guestSlug): void
 {
-    $stmt = $pdo->prepare('SELECT id, name FROM guests WHERE slug = :slug AND related_to_id IS NULL');
-    $stmt->execute(['slug' => $slug]);
-    $titular = $stmt->fetch();
+    $event = find_event_by_slug($pdo, $eventSlug);
+    if (!$event) {
+        json_error(404, 'Convite não encontrado.');
+    }
 
+    $titular = find_titular_by_slug($pdo, $event['id'], $guestSlug);
     if (!$titular) {
         json_error(404, 'Convite não encontrado.');
     }
@@ -27,16 +29,18 @@ function handle_get_guest(PDO $pdo, string $slug): void
 }
 
 /**
- * POST /guests/{slug}/confirm
+ * POST /events/{eventSlug}/guests/{guestSlug}/confirm
  * Body: { "items": [ { "id": 14, "confirmed": true }, ... ] }
  * Precisa incluir todos os membros do grupo (titular + dependentes).
  */
-function handle_confirm_guest(PDO $pdo, string $slug): void
+function handle_confirm_guest(PDO $pdo, string $eventSlug, string $guestSlug): void
 {
-    $stmt = $pdo->prepare('SELECT id, name FROM guests WHERE slug = :slug AND related_to_id IS NULL');
-    $stmt->execute(['slug' => $slug]);
-    $titular = $stmt->fetch();
+    $event = find_event_by_slug($pdo, $eventSlug);
+    if (!$event) {
+        json_error(404, 'Convite não encontrado.');
+    }
 
+    $titular = find_titular_by_slug($pdo, $event['id'], $guestSlug);
     if (!$titular) {
         json_error(404, 'Convite não encontrado.');
     }
@@ -87,7 +91,25 @@ function handle_confirm_guest(PDO $pdo, string $slug): void
 }
 
 /**
+ * Busca o titular (convidado sem related_to_id) dono do link {slug} dentro
+ * de um evento específico. Usado tanto pelas rotas de convite/confirmação
+ * quanto pela lista de presentes, que identifica o convidado através da URL.
+ */
+function find_titular_by_slug(PDO $pdo, int $eventId, string $slug): ?array
+{
+    $stmt = $pdo->prepare(
+        'SELECT id, name FROM guests WHERE event_id = :event_id AND slug = :slug AND related_to_id IS NULL'
+    );
+    $stmt->execute(['event_id' => $eventId, 'slug' => $slug]);
+
+    return $stmt->fetch() ?: null;
+}
+
+/**
  * Retorna o titular + dependentes (grupo completo) de um id de titular.
+ * Não precisa reforçar event_id aqui: related_to_id só aponta para o
+ * titular original que o criou (sempre dentro do mesmo evento, já que
+ * dependentes só são criados via o admin daquele evento).
  */
 function fetch_guest_group(PDO $pdo, int $titularId): array
 {

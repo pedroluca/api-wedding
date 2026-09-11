@@ -10,9 +10,13 @@ function json_response(int $status, array $data): void
     exit;
 }
 
-function json_error(int $status, string $message): void
+function json_error(int $status, string $message, ?string $code = null): void
 {
-    json_response($status, ['error' => $message]);
+    $data = ['error' => $message];
+    if ($code !== null) {
+        $data['code'] = $code;
+    }
+    json_response($status, $data);
 }
 
 function json_body(): array
@@ -37,4 +41,22 @@ function require_string(array $body, string $key, int $maxLength = 190): string
     }
 
     return $value;
+}
+
+/**
+ * Monta a URL pública absoluta de um arquivo salvo em uploads/ (ex:
+ * imagem de presente), a partir do host da própria requisição atual.
+ */
+function public_asset_url(?string $path): ?string
+{
+    if ($path === null) {
+        return null;
+    }
+
+    $isHttps = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')
+        || ($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '') === 'https';
+    $scheme = $isHttps ? 'https' : 'http';
+    $host = $_SERVER['HTTP_HOST'] ?? 'localhost';
+
+    return "{$scheme}://{$host}/{$path}";
 }

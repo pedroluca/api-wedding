@@ -24,3 +24,19 @@ function generate_guest_slug(string $name, int $id): string
 
     return $firstName . '-' . $id;
 }
+
+/**
+ * Gera o slug público de um evento a partir do(s) nome(s) do(s)
+ * anfitrião(ões), ex: "pedro-luca-e-maria-eduarda-3". O sufixo de id
+ * garante unicidade sem precisar checar colisão manualmente (mesmo padrão
+ * de generate_guest_slug); pode ser editado depois pelo super-admin caso
+ * prefira algo mais curto, desde que continue único.
+ */
+function generate_event_slug(string $hostName, ?string $hostNameSecondary, int $id): string
+{
+    $base = $hostNameSecondary !== null && $hostNameSecondary !== ''
+        ? slugify($hostName . ' e ' . $hostNameSecondary)
+        : slugify($hostName);
+
+    return ($base !== '' ? $base : 'evento') . '-' . $id;
+}

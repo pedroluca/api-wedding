@@ -16,7 +16,7 @@ function handle_admin_login(PDO $pdo, array $config): void
         json_error(422, 'Informe email e senha.');
     }
 
-    $stmt = $pdo->prepare('SELECT id, name, email, password_hash FROM admin_users WHERE email = :email');
+    $stmt = $pdo->prepare('SELECT id, event_id, name, email, password_hash FROM admin_users WHERE email = :email');
     $stmt->execute(['email' => $email]);
     $admin = $stmt->fetch();
 
@@ -44,6 +44,7 @@ function handle_admin_login(PDO $pdo, array $config): void
         'token' => $token,
         'admin' => [
             'id' => (int) $admin['id'],
+            'event_id' => $admin['event_id'] !== null ? (int) $admin['event_id'] : null,
             'name' => $admin['name'],
             'email' => $admin['email'],
         ],
