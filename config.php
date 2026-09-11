@@ -21,13 +21,13 @@ $config = [
         'allowed_origins' => [
             'http://localhost:5173',
             'http://192.168.0.143:5173',
-            'https://wedding.pedroluca.dev.br',
+            'https://presenzo.com.br',
         ],
     ],
     'session_ttl_days' => 7,
     'mail' => [
         'api_key' => '',
-        'from' => 'Presenzo <convites@wedding.pedroluca.dev.br>',
+        'from' => 'Presenzo <contato@presenzo.com.br>',
     ],
     'app' => [
         // Origem do frontend, usada para montar os links de convite/redefinição
