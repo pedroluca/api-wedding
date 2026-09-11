@@ -27,16 +27,29 @@ function generate_guest_slug(string $name, int $id): string
 
 /**
  * Gera o slug público de um evento a partir do(s) nome(s) do(s)
- * anfitrião(ões), ex: "pedro-luca-e-maria-eduarda-3". O sufixo de id
- * garante unicidade sem precisar checar colisão manualmente (mesmo padrão
- * de generate_guest_slug); pode ser editado depois pelo super-admin caso
- * prefira algo mais curto, desde que continue único.
+ * anfitrião(ões), ex: "pedro-e-maria" — sem sufixo na grande maioria dos
+ * casos, já que é uma URL pública/compartilhada (diferente do link
+ * individual do convidado). Só quando esse slug "limpo" já está em uso por
+ * outro evento é que entra um sufixo curto e ALEATÓRIO (não o id
+ * sequencial do banco, pra não expor quantos eventos já existem).
  */
-function generate_event_slug(string $hostName, ?string $hostNameSecondary, int $id): string
+function generate_event_slug(PDO $pdo, string $hostName, ?string $hostNameSecondary): string
 {
     $base = $hostNameSecondary !== null && $hostNameSecondary !== ''
         ? slugify($hostName . ' e ' . $hostNameSecondary)
         : slugify($hostName);
+    if ($base === '') {
+        $base = 'evento';
+    }
 
-    return ($base !== '' ? $base : 'evento') . '-' . $id;
+    $checkStmt = $pdo->prepare('SELECT 1 FROM events WHERE slug = :slug');
+
+    $slug = $base;
+    $checkStmt->execute(['slug' => $slug]);
+    while ($checkStmt->fetch()) {
+        $slug = $base . '-' . bin2hex(random_bytes(2));
+        $checkStmt->execute(['slug' => $slug]);
+    }
+
+    return $slug;
 }

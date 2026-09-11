@@ -10,7 +10,7 @@ function handle_list_events(PDO $pdo): void
     $stmt = $pdo->query(
         'SELECT id, slug, event_type, host_name, host_name_secondary, event_date,
                 venue_name, venue_name_secondary, address, maps_url, dress_code,
-                pix_key, logo_path, color_primary, access_expires_at,
+                pix_key, logo_path, color_primary, name_font, access_expires_at,
                 price_charged, last_payment_at, payment_notes, created_at
          FROM events
          ORDER BY created_at DESC'
@@ -61,26 +61,25 @@ function handle_create_event(PDO $pdo, array $config): void
 
     $pdo->beginTransaction();
     try {
+        $slug = generate_event_slug($pdo, $fields['host_name'], $fields['host_name_secondary']);
+
         $insert = $pdo->prepare(
             'INSERT INTO events
                (slug, event_type, host_name, host_name_secondary, event_date, venue_name,
                 venue_name_secondary, address, maps_url, dress_code, pix_key, logo_path,
-                color_primary, access_expires_at)
+                color_primary, name_font, access_expires_at)
              VALUES
-               ("", :event_type, :host_name, :host_name_secondary, :event_date, :venue_name,
+               (:slug, :event_type, :host_name, :host_name_secondary, :event_date, :venue_name,
                 :venue_name_secondary, :address, :maps_url, :dress_code, :pix_key, :logo_path,
-                :color_primary, :access_expires_at)'
+                :color_primary, :name_font, :access_expires_at)'
         );
         $insert->execute($fields + [
+            'slug' => $slug,
             'event_type' => $eventType,
             'logo_path' => $logoPath,
             'access_expires_at' => $accessExpiresAt,
         ]);
         $eventId = (int) $pdo->lastInsertId();
-
-        $slug = generate_event_slug($fields['host_name'], $fields['host_name_secondary'], $eventId);
-        $pdo->prepare('UPDATE events SET slug = :slug WHERE id = :id')
-            ->execute(['slug' => $slug, 'id' => $eventId]);
 
         $adminId = create_event_admin($pdo, $eventId, $adminName, $adminEmail);
 
@@ -134,7 +133,7 @@ function handle_update_event(PDO $pdo, array $config, int $id): void
          SET event_type = :event_type, host_name = :host_name, host_name_secondary = :host_name_secondary,
              event_date = :event_date, venue_name = :venue_name, venue_name_secondary = :venue_name_secondary,
              address = :address, maps_url = :maps_url, dress_code = :dress_code, pix_key = :pix_key,
-             color_primary = :color_primary, access_expires_at = :access_expires_at,
+             color_primary = :color_primary, name_font = :name_font, access_expires_at = :access_expires_at,
              price_charged = :price_charged, last_payment_at = :last_payment_at, payment_notes = :payment_notes
          WHERE id = :id'
     );

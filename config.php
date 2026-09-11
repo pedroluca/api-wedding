@@ -20,6 +20,7 @@ $config = [
     'cors' => [
         'allowed_origins' => [
             'http://localhost:5173',
+            'http://localhost:5176',
             'http://192.168.0.143:5173',
             'https://presenzo.com.br',
         ],
@@ -27,7 +28,7 @@ $config = [
     'session_ttl_days' => 7,
     'mail' => [
         'api_key' => '',
-        'from' => 'Presenzo <contato@presenzo.com.br>',
+        'from' => 'Presenzo Convites <contato@presenzo.com.br>',
     ],
     'app' => [
         // Origem do frontend, usada para montar os links de convite/redefinição

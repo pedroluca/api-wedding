@@ -46,7 +46,7 @@ function handle_update_own_event(PDO $pdo, int $eventId): void
              event_date = :event_date, venue_name = :venue_name,
              venue_name_secondary = :venue_name_secondary, address = :address,
              maps_url = :maps_url, dress_code = :dress_code, pix_key = :pix_key,
-             color_primary = :color_primary, logo_path = :logo_path
+             color_primary = :color_primary, name_font = :name_font, logo_path = :logo_path
          WHERE id = :id'
     );
     $stmt->execute($fields + ['logo_path' => $logoPath, 'id' => $eventId]);
@@ -65,7 +65,7 @@ function fetch_event_row(PDO $pdo, int $eventId): ?array
     $stmt = $pdo->prepare(
         'SELECT id, slug, event_type, host_name, host_name_secondary, event_date,
                 venue_name, venue_name_secondary, address, maps_url, dress_code,
-                pix_key, logo_path, color_primary, access_expires_at,
+                pix_key, logo_path, color_primary, name_font, access_expires_at,
                 price_charged, last_payment_at, payment_notes, created_at
          FROM events
          WHERE id = :id'
@@ -93,7 +93,8 @@ function format_admin_event(array $event): array
  *
  * @return array{host_name:string,host_name_secondary:?string,event_date:?string,
  *               venue_name:?string,venue_name_secondary:?string,address:?string,
- *               maps_url:?string,dress_code:?string,pix_key:?string,color_primary:string}
+ *               maps_url:?string,dress_code:?string,pix_key:?string,color_primary:string,
+ *               name_font:string}
  */
 function read_event_branding_fields(array $body): array
 {
@@ -102,6 +103,13 @@ function read_event_branding_fields(array $body): array
         $colorPrimary = '#d2afff';
     } elseif (!preg_match('/^#[0-9a-fA-F]{6}$/', $colorPrimary)) {
         json_error(422, 'Cor inválida. Use o formato #rrggbb.');
+    }
+
+    $nameFont = trim((string) ($body['name_font'] ?? ''));
+    if ($nameFont === '') {
+        $nameFont = 'sans';
+    } elseif (!in_array($nameFont, ['sans', 'fleur', 'pinyon'], true)) {
+        json_error(422, 'Fonte do nome inválida.');
     }
 
     $eventDate = null;
@@ -125,6 +133,7 @@ function read_event_branding_fields(array $body): array
         'dress_code' => optional_string($body, 'dress_code', 150),
         'pix_key' => optional_string($body, 'pix_key', 190),
         'color_primary' => $colorPrimary,
+        'name_font' => $nameFont,
     ];
 }
 

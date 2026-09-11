@@ -29,7 +29,7 @@ function find_event_by_slug(PDO $pdo, string $slug): ?array
     $stmt = $pdo->prepare(
         'SELECT id, slug, event_type, host_name, host_name_secondary, event_date,
                 venue_name, venue_name_secondary, address, maps_url, dress_code,
-                pix_key, logo_path, color_primary
+                pix_key, logo_path, color_primary, name_font
          FROM events
          WHERE slug = :slug'
     );
@@ -61,5 +61,6 @@ function format_public_event(array $event): array
         'pix_key' => $event['pix_key'],
         'logo_url' => public_asset_url($event['logo_path']),
         'color_primary' => $event['color_primary'],
+        'name_font' => $event['name_font'],
     ];
 }

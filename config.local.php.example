@@ -17,14 +17,14 @@ return [
     ],
     'cors' => [
         'allowed_origins' => [
-            'https://wedding.pedroluca.dev.br',
+            'https://presenzo.com.br',
         ],
     ],
     'mail' => [
         'api_key' => 'coloque-a-api-key-da-resend-aqui',
-        'from' => 'Presenzo <convites@seudominio.com>',
+        'from' => 'Presenzo Convites <contato@presenzo.com.br>',
     ],
     'app' => [
-        'frontend_url' => 'https://wedding.pedroluca.dev.br',
+        'frontend_url' => 'https://presenzo.com.br',
     ],
 ];

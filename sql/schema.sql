@@ -4,7 +4,7 @@
 -- Este arquivo reflete o estado final (multi-evento) do banco, para setups
 -- locais novos. Para levar um banco de produção existente (pré-multi-evento)
 -- até este mesmo estado, use as migrações em sql/migrations/ em ordem
--- (001, 002, 003) em vez de reaplicar este arquivo.
+-- (001 a 005) em vez de reaplicar este arquivo.
 
 CREATE TABLE IF NOT EXISTS events (
   id                    INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
@@ -25,6 +25,9 @@ CREATE TABLE IF NOT EXISTS events (
   pix_key               VARCHAR(190) NULL,
   logo_path             VARCHAR(255) NULL,
   color_primary         CHAR(7) NOT NULL DEFAULT '#d2afff',
+  -- fonte usada no nome dos noivos/aniversariante na página do convite:
+  -- 'sans' (padrão do site) ou uma das fontes de caligrafia disponíveis.
+  name_font             ENUM('sans','fleur','pinyon') NOT NULL DEFAULT 'sans',
 
   -- ciclo de acesso do admin do evento. NULL = nunca expira. Quando
   -- event_date é definida, o padrão é event_date + config('access.grace_days')
