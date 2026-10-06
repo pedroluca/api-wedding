@@ -45,7 +45,8 @@ function handle_update_own_event(PDO $pdo, int $eventId): void
          SET host_name = :host_name, host_name_secondary = :host_name_secondary,
              event_date = :event_date, venue_name = :venue_name,
              venue_name_secondary = :venue_name_secondary, address = :address,
-             maps_url = :maps_url, dress_code = :dress_code, pix_key = :pix_key,
+             maps_url = :maps_url, maps_url_secondary = :maps_url_secondary,
+             dress_code = :dress_code, pix_key = :pix_key,
              color_primary = :color_primary, name_font = :name_font, logo_path = :logo_path
          WHERE id = :id'
     );
@@ -64,7 +65,7 @@ function fetch_event_row(PDO $pdo, int $eventId): ?array
 {
     $stmt = $pdo->prepare(
         'SELECT id, slug, event_type, host_name, host_name_secondary, event_date,
-                venue_name, venue_name_secondary, address, maps_url, dress_code,
+                venue_name, venue_name_secondary, address, maps_url, maps_url_secondary, dress_code,
                 pix_key, logo_path, color_primary, name_font, access_expires_at,
                 price_charged, last_payment_at, payment_notes, created_at
          FROM events
@@ -93,8 +94,8 @@ function format_admin_event(array $event): array
  *
  * @return array{host_name:string,host_name_secondary:?string,event_date:?string,
  *               venue_name:?string,venue_name_secondary:?string,address:?string,
- *               maps_url:?string,dress_code:?string,pix_key:?string,color_primary:string,
- *               name_font:string}
+ *               maps_url:?string,maps_url_secondary:?string,dress_code:?string,
+ *               pix_key:?string,color_primary:string,name_font:string}
  */
 function read_event_branding_fields(array $body): array
 {
@@ -130,6 +131,7 @@ function read_event_branding_fields(array $body): array
         'venue_name_secondary' => optional_string($body, 'venue_name_secondary', 190),
         'address' => optional_string($body, 'address', 255),
         'maps_url' => optional_string($body, 'maps_url', 500),
+        'maps_url_secondary' => optional_string($body, 'maps_url_secondary', 500),
         'dress_code' => optional_string($body, 'dress_code', 150),
         'pix_key' => optional_string($body, 'pix_key', 190),
         'color_primary' => $colorPrimary,

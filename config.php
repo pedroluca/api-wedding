@@ -20,7 +20,7 @@ $config = [
     'cors' => [
         'allowed_origins' => [
             'http://localhost:5173',
-            'http://localhost:5176',
+            'http://localhost:5174',
             'http://192.168.0.143:5173',
             'https://presenzo.com.br',
         ],

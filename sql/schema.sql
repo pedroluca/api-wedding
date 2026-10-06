@@ -4,7 +4,7 @@
 -- Este arquivo reflete o estado final (multi-evento) do banco, para setups
 -- locais novos. Para levar um banco de produção existente (pré-multi-evento)
 -- até este mesmo estado, use as migrações em sql/migrations/ em ordem
--- (001 a 005) em vez de reaplicar este arquivo.
+-- (001 a 006) em vez de reaplicar este arquivo.
 
 CREATE TABLE IF NOT EXISTS events (
   id                    INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
@@ -21,6 +21,9 @@ CREATE TABLE IF NOT EXISTS events (
   venue_name_secondary  VARCHAR(190) NULL,
   address               VARCHAR(255) NULL,
   maps_url              VARCHAR(500) NULL,
+  -- link do mapa do local da festa (venue_name_secondary), quando ele não
+  -- fica no mesmo endereço da cerimônia.
+  maps_url_secondary    VARCHAR(500) NULL,
   dress_code            VARCHAR(150) NULL,
   pix_key               VARCHAR(190) NULL,
   logo_path             VARCHAR(255) NULL,
