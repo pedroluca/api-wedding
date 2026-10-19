@@ -12,7 +12,7 @@ declare(strict_types=1);
 function handle_list_guests(PDO $pdo, int $eventId): void
 {
     $stmt = $pdo->prepare(
-        'SELECT id, name, slug, related_to_id, status, confirmed_at, created_at
+        'SELECT id, name, slug, related_to_id, role, status, confirmed_at, created_at
          FROM guests
          WHERE event_id = :event_id
          ORDER BY (related_to_id IS NULL) DESC, COALESCE(related_to_id, id) ASC, id ASC'
@@ -27,6 +27,7 @@ function handle_list_guests(PDO $pdo, int $eventId): void
                 'id' => (int) $row['id'],
                 'name' => $row['name'],
                 'slug' => $row['slug'],
+                'role' => $row['role'],
                 'status' => $row['status'],
                 'confirmed_at' => $row['confirmed_at'],
                 'created_at' => $row['created_at'],
@@ -52,16 +53,17 @@ function handle_list_guests(PDO $pdo, int $eventId): void
 
 /**
  * POST /admin/guests
- * Body: { "name": "..." } — cria um convidado titular (com link próprio)
- * no evento do admin autenticado.
+ * Body: { "name": "...", "role"?: "padrinho" } — cria um convidado titular
+ * (com link próprio) no evento do admin autenticado.
  */
 function handle_create_guest(PDO $pdo, int $eventId): void
 {
     $body = json_body();
     $name = require_string($body, 'name', 150);
+    $role = read_guest_role($body);
 
-    $stmt = $pdo->prepare('INSERT INTO guests (event_id, name) VALUES (:event_id, :name)');
-    $stmt->execute(['event_id' => $eventId, 'name' => $name]);
+    $stmt = $pdo->prepare('INSERT INTO guests (event_id, name, role) VALUES (:event_id, :name, :role)');
+    $stmt->execute(['event_id' => $eventId, 'name' => $name, 'role' => $role]);
     $id = (int) $pdo->lastInsertId();
 
     $slug = generate_guest_slug($name, $id);
@@ -73,6 +75,7 @@ function handle_create_guest(PDO $pdo, int $eventId): void
             'id' => $id,
             'name' => $name,
             'slug' => $slug,
+            'role' => $role,
             'status' => 'pendente',
             'dependents' => [],
         ],
@@ -110,20 +113,41 @@ function handle_create_dependent(PDO $pdo, int $eventId, int $titularId): void
 
 /**
  * PUT /admin/guests/{id}
- * Body: { "name": "..." } — renomeia titular ou dependente, desde que
+ * Body: { "name"?: "...", "role"?: "..." } (ao menos um dos dois) —
+ * renomeia titular ou dependente e/ou muda o papel do titular, desde que
  * pertença ao evento do admin autenticado. O slug do titular não muda,
  * para não invalidar um link já enviado.
  */
 function handle_update_guest(PDO $pdo, int $eventId, int $id): void
 {
     $body = json_body();
-    $name = require_string($body, 'name', 150);
+    $hasName = array_key_exists('name', $body);
+    $hasRole = array_key_exists('role', $body);
+    if (!$hasName && !$hasRole) {
+        json_error(422, 'Informe "name" e/ou "role".');
+    }
 
-    $stmt = $pdo->prepare('UPDATE guests SET name = :name WHERE id = :id AND event_id = :event_id');
-    $stmt->execute(['name' => $name, 'id' => $id, 'event_id' => $eventId]);
-
-    if ($stmt->rowCount() === 0) {
+    // Checa a existência antes (em vez de rowCount() do UPDATE): no MySQL o
+    // rowCount() vem 0 quando o valor enviado é igual ao atual.
+    $find = $pdo->prepare('SELECT related_to_id FROM guests WHERE id = :id AND event_id = :event_id');
+    $find->execute(['id' => $id, 'event_id' => $eventId]);
+    $guest = $find->fetch();
+    if (!$guest) {
         json_error(404, 'Convidado não encontrado.');
+    }
+
+    if ($hasName) {
+        $name = require_string($body, 'name', 150);
+        $stmt = $pdo->prepare('UPDATE guests SET name = :name WHERE id = :id');
+        $stmt->execute(['name' => $name, 'id' => $id]);
+    }
+
+    if ($hasRole) {
+        if ($guest['related_to_id'] !== null) {
+            json_error(422, 'O papel só pode ser definido no convidado titular.');
+        }
+        $stmt = $pdo->prepare('UPDATE guests SET role = :role WHERE id = :id');
+        $stmt->execute(['role' => read_guest_role($body), 'id' => $id]);
     }
 
     json_response(200, ['ok' => true]);
@@ -155,4 +179,20 @@ function find_titular(PDO $pdo, int $eventId, int $id): ?array
     $row = $stmt->fetch();
 
     return $row ?: null;
+}
+
+/**
+ * Papel do convidado no evento (guests.role). Ausente/vazio = 'convidado'.
+ */
+function read_guest_role(array $body): string
+{
+    $role = trim((string) ($body['role'] ?? ''));
+    if ($role === '') {
+        return 'convidado';
+    }
+    if (!in_array($role, ['convidado', 'padrinho', 'madrinha', 'pais', 'especial'], true)) {
+        json_error(422, 'Papel do convidado inválido.');
+    }
+
+    return $role;
 }

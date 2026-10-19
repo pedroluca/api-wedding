@@ -35,6 +35,11 @@ $config = [
         // de senha enviados por email (a API não tem como inferir essa origem
         // a partir da própria requisição, diferente de public_asset_url()).
         'frontend_url' => 'http://localhost:5173',
+        // Base usada por public_asset_url() quando o arquivo de uploads/ não
+        // existe no disco desta instância (ex: dev local com banco copiado da
+        // produção). Em produção os arquivos existem, então não tem efeito.
+        // String vazia desliga o fallback.
+        'assets_fallback_url' => 'https://api.presenzo.com.br',
     ],
     'access' => [
         // Dias de acesso ao painel admin após a data do evento (event_date),

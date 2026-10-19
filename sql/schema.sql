@@ -4,7 +4,7 @@
 -- Este arquivo reflete o estado final (multi-evento) do banco, para setups
 -- locais novos. Para levar um banco de produção existente (pré-multi-evento)
 -- até este mesmo estado, use as migrações em sql/migrations/ em ordem
--- (001 a 006) em vez de reaplicar este arquivo.
+-- (001 a 009) em vez de reaplicar este arquivo.
 
 CREATE TABLE IF NOT EXISTS events (
   id                    INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
@@ -25,9 +25,18 @@ CREATE TABLE IF NOT EXISTS events (
   -- fica no mesmo endereço da cerimônia.
   maps_url_secondary    VARCHAR(500) NULL,
   dress_code            VARCHAR(150) NULL,
+  -- mensagem livre dos noivos exibida na tela interna do convite.
+  invite_message        VARCHAR(1000) NULL,
+  -- modelo da mensagem que o admin copia para enviar o convite, com
+  -- variáveis ({primeiro_nome}, {link}...) trocadas no front. NULL = padrão.
+  share_message         VARCHAR(1000) NULL,
   pix_key               VARCHAR(190) NULL,
   logo_path             VARCHAR(255) NULL,
-  color_primary         CHAR(7) NOT NULL DEFAULT '#d2afff',
+  -- foto do casal (capa do convite) e música tocada ao abrir o envelope,
+  -- no mesmo formato de logo_path ("uploads/...").
+  cover_photo_path      VARCHAR(255) NULL,
+  music_path            VARCHAR(255) NULL,
+  color_primary        CHAR(7) NOT NULL DEFAULT '#d2afff',
   -- fonte usada no nome dos noivos/aniversariante na página do convite:
   -- 'sans' (padrão do site) ou uma das fontes de caligrafia disponíveis.
   name_font             ENUM('sans','fleur','pinyon') NOT NULL DEFAULT 'sans',
@@ -108,6 +117,9 @@ CREATE TABLE IF NOT EXISTS guests (
   name          VARCHAR(150) NOT NULL,
   slug          VARCHAR(180) NULL,
   related_to_id INT UNSIGNED NULL,
+  -- papel no evento, exibido como destaque no convite. Só tem efeito no
+  -- titular (vale para o link inteiro).
+  role          ENUM('convidado','padrinho','madrinha','pais','especial') NOT NULL DEFAULT 'convidado',
   status        ENUM('pendente', 'confirmado', 'recusado') NOT NULL DEFAULT 'pendente',
   confirmed_at  TIMESTAMP NULL,
   created_at    TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,

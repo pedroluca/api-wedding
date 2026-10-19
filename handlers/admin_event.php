@@ -21,9 +21,13 @@ function handle_get_own_event(PDO $pdo, int $eventId): void
 
 /**
  * POST /admin/event
- * multipart/form-data com os campos de marca do evento + logo opcional.
+ * multipart/form-data com os campos de marca do evento + arquivos opcionais
+ * (logo, cover_photo, music). remove_cover_photo=1 / remove_music=1 apagam
+ * a foto de capa / música atuais (o logo só pode ser substituído).
  * Só escreve campos de marca — access_expires_at/price_charged/event_type
  * etc só são graváveis pelo super-admin, mesmo que venham no corpo.
+ * share_message fica fora de read_event_branding_fields de propósito: é
+ * só do admin do evento, e assim o PUT do super-admin nunca o apaga.
  */
 function handle_update_own_event(PDO $pdo, int $eventId): void
 {
@@ -33,11 +37,25 @@ function handle_update_own_event(PDO $pdo, int $eventId): void
     }
 
     $fields = read_event_branding_fields($_POST);
+    $fields['share_message'] = optional_text($_POST, 'share_message', 1000);
 
     $logoPath = $existing['logo_path'];
     if (has_uploaded_file('logo')) {
         $logoPath = save_uploaded_image($_FILES['logo'], 'logos');
-        delete_uploaded_file($existing['logo_path']);
+    }
+
+    $coverPhotoPath = $existing['cover_photo_path'];
+    if (has_uploaded_file('cover_photo')) {
+        $coverPhotoPath = save_uploaded_image($_FILES['cover_photo'], 'covers');
+    } elseif (($_POST['remove_cover_photo'] ?? '') === '1') {
+        $coverPhotoPath = null;
+    }
+
+    $musicPath = $existing['music_path'];
+    if (has_uploaded_file('music')) {
+        $musicPath = save_uploaded_audio($_FILES['music'], 'music');
+    } elseif (($_POST['remove_music'] ?? '') === '1') {
+        $musicPath = null;
     }
 
     $stmt = $pdo->prepare(
@@ -46,11 +64,26 @@ function handle_update_own_event(PDO $pdo, int $eventId): void
              event_date = :event_date, venue_name = :venue_name,
              venue_name_secondary = :venue_name_secondary, address = :address,
              maps_url = :maps_url, maps_url_secondary = :maps_url_secondary,
-             dress_code = :dress_code, pix_key = :pix_key,
-             color_primary = :color_primary, name_font = :name_font, logo_path = :logo_path
+             dress_code = :dress_code, invite_message = :invite_message,
+             share_message = :share_message, pix_key = :pix_key,
+             color_primary = :color_primary, name_font = :name_font, logo_path = :logo_path,
+             cover_photo_path = :cover_photo_path, music_path = :music_path
          WHERE id = :id'
     );
-    $stmt->execute($fields + ['logo_path' => $logoPath, 'id' => $eventId]);
+    $stmt->execute($fields + [
+        'logo_path' => $logoPath,
+        'cover_photo_path' => $coverPhotoPath,
+        'music_path' => $musicPath,
+        'id' => $eventId,
+    ]);
+
+    // Só apaga os arquivos antigos depois do UPDATE dar certo, pra nunca
+    // deixar o banco apontando pra um arquivo que já não existe.
+    foreach (['logo_path' => $logoPath, 'cover_photo_path' => $coverPhotoPath, 'music_path' => $musicPath] as $column => $path) {
+        if ($existing[$column] !== $path) {
+            delete_uploaded_file($existing[$column]);
+        }
+    }
 
     json_response(200, ['event' => format_admin_event(fetch_event_row($pdo, $eventId))]);
 }
@@ -66,8 +99,9 @@ function fetch_event_row(PDO $pdo, int $eventId): ?array
     $stmt = $pdo->prepare(
         'SELECT id, slug, event_type, host_name, host_name_secondary, event_date,
                 venue_name, venue_name_secondary, address, maps_url, maps_url_secondary, dress_code,
-                pix_key, logo_path, color_primary, name_font, access_expires_at,
-                price_charged, last_payment_at, payment_notes, created_at
+                invite_message, share_message, pix_key, logo_path, cover_photo_path, music_path,
+                color_primary, name_font, access_expires_at, price_charged, last_payment_at,
+                payment_notes, created_at
          FROM events
          WHERE id = :id'
     );
@@ -78,12 +112,14 @@ function fetch_event_row(PDO $pdo, int $eventId): ?array
 
 /**
  * Visão do admin de evento: dados públicos + access_expires_at (para saber
- * quando precisa renovar), sem nenhum campo financeiro.
+ * quando precisa renovar) + modelo da mensagem de envio, sem nenhum campo
+ * financeiro.
  */
 function format_admin_event(array $event): array
 {
     return format_public_event($event) + [
         'access_expires_at' => $event['access_expires_at'],
+        'share_message' => $event['share_message'],
     ];
 }
 
@@ -95,7 +131,8 @@ function format_admin_event(array $event): array
  * @return array{host_name:string,host_name_secondary:?string,event_date:?string,
  *               venue_name:?string,venue_name_secondary:?string,address:?string,
  *               maps_url:?string,maps_url_secondary:?string,dress_code:?string,
- *               pix_key:?string,color_primary:string,name_font:string}
+ *               invite_message:?string,pix_key:?string,color_primary:string,
+ *               name_font:string}
  */
 function read_event_branding_fields(array $body): array
 {
@@ -133,6 +170,7 @@ function read_event_branding_fields(array $body): array
         'maps_url' => optional_string($body, 'maps_url', 500),
         'maps_url_secondary' => optional_string($body, 'maps_url_secondary', 500),
         'dress_code' => optional_string($body, 'dress_code', 150),
+        'invite_message' => optional_text($body, 'invite_message', 1000),
         'pix_key' => optional_string($body, 'pix_key', 190),
         'color_primary' => $colorPrimary,
         'name_font' => $nameFont,
@@ -150,4 +188,18 @@ function optional_string(array $body, string $key, int $maxLength): ?string
     }
 
     return $value;
+}
+
+/**
+ * optional_string() para textos com várias linhas (textarea). O
+ * multipart/form-data envia quebras de linha como \r\n; normaliza pra \n
+ * antes do limite de tamanho, senão cada quebra contaria em dobro.
+ */
+function optional_text(array $body, string $key, int $maxLength): ?string
+{
+    if (isset($body[$key])) {
+        $body[$key] = str_replace("\r\n", "\n", (string) $body[$key]);
+    }
+
+    return optional_string($body, $key, $maxLength);
 }

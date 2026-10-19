@@ -10,8 +10,9 @@ function handle_list_events(PDO $pdo): void
     $stmt = $pdo->query(
         'SELECT id, slug, event_type, host_name, host_name_secondary, event_date,
                 venue_name, venue_name_secondary, address, maps_url, maps_url_secondary, dress_code,
-                pix_key, logo_path, color_primary, name_font, access_expires_at,
-                price_charged, last_payment_at, payment_notes, created_at
+                invite_message, share_message, pix_key, logo_path, cover_photo_path, music_path,
+                color_primary, name_font, access_expires_at, price_charged, last_payment_at,
+                payment_notes, created_at
          FROM events
          ORDER BY created_at DESC'
     );
@@ -66,12 +67,12 @@ function handle_create_event(PDO $pdo, array $config): void
         $insert = $pdo->prepare(
             'INSERT INTO events
                (slug, event_type, host_name, host_name_secondary, event_date, venue_name,
-                venue_name_secondary, address, maps_url, maps_url_secondary, dress_code, pix_key,
-                logo_path, color_primary, name_font, access_expires_at)
+                venue_name_secondary, address, maps_url, maps_url_secondary, dress_code,
+                invite_message, pix_key, logo_path, color_primary, name_font, access_expires_at)
              VALUES
                (:slug, :event_type, :host_name, :host_name_secondary, :event_date, :venue_name,
-                :venue_name_secondary, :address, :maps_url, :maps_url_secondary, :dress_code, :pix_key,
-                :logo_path, :color_primary, :name_font, :access_expires_at)'
+                :venue_name_secondary, :address, :maps_url, :maps_url_secondary, :dress_code,
+                :invite_message, :pix_key, :logo_path, :color_primary, :name_font, :access_expires_at)'
         );
         $insert->execute($fields + [
             'slug' => $slug,
@@ -133,7 +134,7 @@ function handle_update_event(PDO $pdo, array $config, int $id): void
          SET event_type = :event_type, host_name = :host_name, host_name_secondary = :host_name_secondary,
              event_date = :event_date, venue_name = :venue_name, venue_name_secondary = :venue_name_secondary,
              address = :address, maps_url = :maps_url, maps_url_secondary = :maps_url_secondary,
-             dress_code = :dress_code, pix_key = :pix_key,
+             dress_code = :dress_code, invite_message = :invite_message, pix_key = :pix_key,
              color_primary = :color_primary, name_font = :name_font, access_expires_at = :access_expires_at,
              price_charged = :price_charged, last_payment_at = :last_payment_at, payment_notes = :payment_notes
          WHERE id = :id'
@@ -189,6 +190,8 @@ function handle_delete_event(PDO $pdo, int $id): void
         delete_uploaded_file($path);
     }
     delete_uploaded_file($event['logo_path']);
+    delete_uploaded_file($event['cover_photo_path']);
+    delete_uploaded_file($event['music_path']);
 
     json_response(200, ['ok' => true]);
 }

@@ -9,6 +9,18 @@ const UPLOAD_ALLOWED_MIME = [
     'image/webp' => 'webp',
 ];
 
+const UPLOAD_AUDIO_MAX_BYTES = 15 * 1024 * 1024;
+const UPLOAD_AUDIO_ALLOWED_MIME = [
+    'audio/mpeg' => 'mp3',
+    'audio/mp3' => 'mp3',
+    'audio/mp4' => 'm4a',
+    'audio/x-m4a' => 'm4a',
+    // finfo costuma reportar .m4a como container MP4 genérico
+    'video/mp4' => 'm4a',
+    'audio/ogg' => 'ogg',
+    'application/ogg' => 'ogg',
+];
+
 function has_uploaded_file(string $field): bool
 {
     return isset($_FILES[$field]) && $_FILES[$field]['error'] !== UPLOAD_ERR_NO_FILE;
@@ -34,14 +46,58 @@ function save_uploaded_image(array $file, string $subdir): string
         json_error(422, 'Formato de imagem inválido. Use JPG, PNG ou WEBP.');
     }
 
-    $dir = __DIR__ . '/../uploads/' . $subdir;
-    if (!is_dir($dir) && !mkdir($dir, 0755, true) && !is_dir($dir)) {
-        json_error(500, 'Não foi possível salvar a imagem.');
+    return store_upload($file['tmp_name'], $subdir, UPLOAD_ALLOWED_MIME[$info['mime']], 'a imagem');
+}
+
+/**
+ * Mesmo contrato de save_uploaded_image(), para a música do convite
+ * (events.music_path). O tipo é detectado pelo conteúdo via finfo, não
+ * pelo MIME enviado pelo browser.
+ */
+function save_uploaded_audio(array $file, string $subdir): string
+{
+    if ($file['error'] !== UPLOAD_ERR_OK) {
+        json_error(422, 'Falha ao enviar a música.');
+    }
+    if ($file['size'] > UPLOAD_AUDIO_MAX_BYTES) {
+        json_error(422, 'Música muito grande (máximo 15MB).');
     }
 
-    $filename = bin2hex(random_bytes(16)) . '.' . UPLOAD_ALLOWED_MIME[$info['mime']];
-    if (!move_uploaded_file($file['tmp_name'], $dir . '/' . $filename)) {
-        json_error(500, 'Não foi possível salvar a imagem.');
+    // Sem a extensão fileinfo do PHP (vem desligada em alguns php.ini de
+    // dev), trata como octet-stream e cai na checagem por extensão abaixo.
+    $mime = class_exists('finfo')
+        ? (string) (new finfo(FILEINFO_MIME_TYPE))->file($file['tmp_name'])
+        : 'application/octet-stream';
+    $ext = UPLOAD_AUDIO_ALLOWED_MIME[$mime] ?? null;
+
+    // MP3 sem tag ID3 às vezes é detectado como octet-stream (e sem finfo
+    // tudo vira octet-stream); nesse caso confia na extensão do nome original.
+    if ($ext === null && $mime === 'application/octet-stream') {
+        $originalExt = strtolower(pathinfo((string) $file['name'], PATHINFO_EXTENSION));
+        $ext = in_array($originalExt, UPLOAD_AUDIO_ALLOWED_MIME, true) ? $originalExt : null;
+    }
+    if ($ext === null) {
+        json_error(422, 'Formato de música inválido. Use MP3, M4A ou OGG.');
+    }
+
+    return store_upload($file['tmp_name'], $subdir, $ext, 'a música');
+}
+
+/**
+ * Move um upload já validado para uploads/{$subdir}/ com nome aleatório e
+ * retorna o caminho relativo ("uploads/..."). $label só entra na mensagem
+ * de erro ("Não foi possível salvar a imagem.").
+ */
+function store_upload(string $tmpName, string $subdir, string $ext, string $label): string
+{
+    $dir = __DIR__ . '/../uploads/' . $subdir;
+    if (!is_dir($dir) && !mkdir($dir, 0755, true) && !is_dir($dir)) {
+        json_error(500, "Não foi possível salvar {$label}.");
+    }
+
+    $filename = bin2hex(random_bytes(16)) . '.' . $ext;
+    if (!move_uploaded_file($tmpName, $dir . '/' . $filename)) {
+        json_error(500, "Não foi possível salvar {$label}.");
     }
 
     return 'uploads/' . $subdir . '/' . $filename;

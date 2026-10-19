@@ -46,11 +46,21 @@ function require_string(array $body, string $key, int $maxLength = 190): string
 /**
  * Monta a URL pública absoluta de um arquivo salvo em uploads/ (ex:
  * imagem de presente), a partir do host da própria requisição atual.
+ *
+ * Se o arquivo não existir no disco desta instância e houver
+ * ASSETS_FALLBACK_URL configurada (config app.assets_fallback_url), aponta
+ * pra lá — caso típico do dev local com banco copiado da produção, onde
+ * uploads/ (fora do git) só tem o que foi enviado localmente.
  */
 function public_asset_url(?string $path): ?string
 {
     if ($path === null) {
         return null;
+    }
+
+    $fallback = defined('ASSETS_FALLBACK_URL') ? ASSETS_FALLBACK_URL : '';
+    if ($fallback !== '' && !is_file(__DIR__ . '/../' . $path)) {
+        return "{$fallback}/{$path}";
     }
 
     $isHttps = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')

@@ -98,7 +98,7 @@ function handle_confirm_guest(PDO $pdo, string $eventSlug, string $guestSlug): v
 function find_titular_by_slug(PDO $pdo, int $eventId, string $slug): ?array
 {
     $stmt = $pdo->prepare(
-        'SELECT id, name FROM guests WHERE event_id = :event_id AND slug = :slug AND related_to_id IS NULL'
+        'SELECT id, name, role FROM guests WHERE event_id = :event_id AND slug = :slug AND related_to_id IS NULL'
     );
     $stmt->execute(['event_id' => $eventId, 'slug' => $slug]);
 
