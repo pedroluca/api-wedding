@@ -12,7 +12,8 @@ declare(strict_types=1);
 function handle_list_guests(PDO $pdo, int $eventId): void
 {
     $stmt = $pdo->prepare(
-        'SELECT id, name, slug, related_to_id, role, status, confirmed_at, created_at
+        'SELECT id, name, slug, related_to_id, role, status, confirmed_at,
+                gifts_views, gifts_last_viewed_at, created_at
          FROM guests
          WHERE event_id = :event_id
          ORDER BY (related_to_id IS NULL) DESC, COALESCE(related_to_id, id) ASC, id ASC'
@@ -30,6 +31,8 @@ function handle_list_guests(PDO $pdo, int $eventId): void
                 'role' => $row['role'],
                 'status' => $row['status'],
                 'confirmed_at' => $row['confirmed_at'],
+                'gifts_views' => (int) $row['gifts_views'],
+                'gifts_last_viewed_at' => $row['gifts_last_viewed_at'],
                 'created_at' => $row['created_at'],
                 'dependents' => [],
             ];
@@ -77,6 +80,8 @@ function handle_create_guest(PDO $pdo, int $eventId): void
             'slug' => $slug,
             'role' => $role,
             'status' => 'pendente',
+            'gifts_views' => 0,
+            'gifts_last_viewed_at' => null,
             'dependents' => [],
         ],
     ]);

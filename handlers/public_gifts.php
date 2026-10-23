@@ -56,7 +56,26 @@ function handle_list_available_gifts(PDO $pdo, string $eventSlug, string $guestS
         ];
     }
 
+    record_gifts_view($pdo, (int) $titular['id']);
+
     json_response(200, ['gifts' => $result]);
+}
+
+/**
+ * Soma 1 no contador de acessos à lista de presentes do titular (métrica
+ * exibida só no admin). Uma falha aqui nunca pode derrubar a lista para o
+ * convidado, por isso o erro é engolido.
+ */
+function record_gifts_view(PDO $pdo, int $titularId): void
+{
+    try {
+        $stmt = $pdo->prepare(
+            'UPDATE guests SET gifts_views = gifts_views + 1, gifts_last_viewed_at = NOW() WHERE id = :id'
+        );
+        $stmt->execute(['id' => $titularId]);
+    } catch (Throwable $e) {
+        // métrica best-effort
+    }
 }
 
 /**

@@ -122,6 +122,10 @@ CREATE TABLE IF NOT EXISTS guests (
   role          ENUM('convidado','padrinho','madrinha','pais','especial') NOT NULL DEFAULT 'convidado',
   status        ENUM('pendente', 'confirmado', 'recusado') NOT NULL DEFAULT 'pendente',
   confirmed_at  TIMESTAMP NULL,
+  -- métrica só para o admin: quantas vezes o link abriu a lista de
+  -- presentes (contada no titular) e quando foi a última.
+  gifts_views          INT UNSIGNED NOT NULL DEFAULT 0,
+  gifts_last_viewed_at TIMESTAMP NULL,
   created_at    TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   UNIQUE KEY uq_guests_event_slug (event_id, slug),
   KEY idx_guests_related_to (related_to_id),
