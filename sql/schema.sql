@@ -51,10 +51,23 @@ CREATE TABLE IF NOT EXISTS events (
   show_countdown        TINYINT(1) NOT NULL DEFAULT 1,
   show_calendar         TINYINT(1) NOT NULL DEFAULT 1,
 
+  -- plano do evento: 'standard' (Padrão), 'premium' (Premium) ou
+  -- 'unlimited' (Ilimitado, interno: sem limites e sem prazo, para qualquer
+  -- evento que o admin superior quiser liberar). O que cada plano libera
+  -- fica em event_entitlements() (src/Plans.php).
+  plan                  ENUM('standard','premium','unlimited') NOT NULL DEFAULT 'standard',
+  -- módulo de presentes (lista + Pix). Desligado esconde, não apaga.
+  gifts_enabled         TINYINT(1) NOT NULL DEFAULT 1,
+  -- faixa de pessoas (titulares + relacionados) e admins contratados.
+  -- NULL = sem limite.
+  guest_limit           INT UNSIGNED NULL,
+  admin_limit           INT UNSIGNED NULL,
+
   -- ciclo de acesso do admin do evento. NULL = nunca expira. Quando
-  -- event_date é definida, o padrão é event_date + config('access.grace_days')
-  -- dias, calculado pelo backend ao criar/atualizar o evento — mas o
-  -- admin superior pode sempre sobrescrever manualmente (renovação).
+  -- event_date é definida, o padrão é event_date + o prazo do plano
+  -- (config access.grace_days, ou grace_days_premium no Premium),
+  -- calculado pelo backend ao criar o evento — mas o admin superior pode
+  -- sempre sobrescrever manualmente (renovação). Ilimitado = sempre NULL.
   access_expires_at     DATETIME NULL,
 
   -- controle financeiro do admin superior; sem nenhuma lógica de cobrança
@@ -63,6 +76,8 @@ CREATE TABLE IF NOT EXISTS events (
   price_charged         DECIMAL(10,2) NULL,
   last_payment_at       DATE NULL,
   payment_notes         VARCHAR(500) NULL,
+  -- JSON do orçamento usado na venda (histórico).
+  price_breakdown       TEXT NULL,
 
   created_at            TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at            TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,

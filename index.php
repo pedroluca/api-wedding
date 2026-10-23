@@ -11,6 +11,7 @@ require __DIR__ . '/src/Auth.php';
 require __DIR__ . '/src/Database.php';
 require __DIR__ . '/src/Uploads.php';
 require __DIR__ . '/src/Mailer.php';
+require __DIR__ . '/src/Plans.php';
 require __DIR__ . '/handlers/public_events.php';
 require __DIR__ . '/handlers/public_guests.php';
 require __DIR__ . '/handlers/public_gifts.php';
@@ -148,21 +149,25 @@ if ($method === 'DELETE' && preg_match('#^/admin/guests/(\d+)$#', $path, $m)) {
 // --- presentes --------------------------------------------------------------
 if ($method === 'GET' && $path === '/admin/gifts') {
     $admin = require_event_admin($pdo);
+    require_gifts_module($pdo, $admin['event_id']);
     handle_list_gifts($pdo, $admin['event_id']);
 }
 
 if ($method === 'POST' && $path === '/admin/gifts') {
     $admin = require_event_admin($pdo);
+    require_gifts_module($pdo, $admin['event_id']);
     handle_create_gift($pdo, $admin['event_id']);
 }
 
 if ($method === 'POST' && preg_match('#^/admin/gifts/(\d+)$#', $path, $m)) {
     $admin = require_event_admin($pdo);
+    require_gifts_module($pdo, $admin['event_id']);
     handle_update_gift($pdo, $admin['event_id'], (int) $m[1]);
 }
 
 if ($method === 'DELETE' && preg_match('#^/admin/gifts/(\d+)$#', $path, $m)) {
     $admin = require_event_admin($pdo);
+    require_gifts_module($pdo, $admin['event_id']);
     handle_delete_gift($pdo, $admin['event_id'], (int) $m[1]);
 }
 
@@ -242,11 +247,13 @@ if ($method === 'DELETE' && preg_match('#^/admin/super/gift-templates/(\d+)$#', 
 // --- admin de evento: prévia e clone dos modelos de presente -----------------
 if ($method === 'GET' && $path === '/admin/gift-templates') {
     $admin = require_event_admin($pdo);
+    require_gifts_module($pdo, $admin['event_id']);
     handle_list_gift_templates_for_own_event($pdo, $admin['event_id']);
 }
 
 if ($method === 'POST' && $path === '/admin/gift-templates/clone') {
     $admin = require_event_admin($pdo);
+    require_gifts_module($pdo, $admin['event_id']);
     handle_clone_gift_templates($pdo, $admin['event_id']);
 }
 

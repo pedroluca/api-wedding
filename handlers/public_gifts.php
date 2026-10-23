@@ -15,6 +15,9 @@ function handle_list_available_gifts(PDO $pdo, string $eventSlug, string $guestS
     if (!$event) {
         json_error(404, 'Convite não encontrado.');
     }
+    if (!event_entitlements($event)['gifts']) {
+        json_error(404, 'Lista de presentes não encontrada.');
+    }
 
     $titular = find_titular_by_slug($pdo, $event['id'], $guestSlug);
     if (!$titular) {
@@ -94,6 +97,9 @@ function handle_claim_gift(PDO $pdo, string $eventSlug, string $guestSlug, int $
     $event = find_event_by_slug($pdo, $eventSlug);
     if (!$event) {
         json_error(404, 'Convite não encontrado.');
+    }
+    if (!event_entitlements($event)['gifts']) {
+        json_error(404, 'Lista de presentes não encontrada.');
     }
 
     $titular = find_titular_by_slug($pdo, $event['id'], $guestSlug);

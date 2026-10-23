@@ -47,6 +47,9 @@ $config = [
         // explícito. Folga generosa o suficiente para cobrir toda a janela de
         // confirmações e alguns dias depois do próprio evento.
         'grace_days' => 15,
+        // O mesmo para eventos Premium: o dobro do Padrão. O plano Ilimitado
+        // não tem prazo (ver plan_grace_days em src/Plans.php).
+        'grace_days_premium' => 30,
     ],
     'password_token_ttl_hours' => [
         'invite' => 168,

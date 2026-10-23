@@ -104,6 +104,7 @@ function fetch_event_row(PDO $pdo, int $eventId): ?array
                 venue_name, venue_name_secondary, address, maps_url, maps_url_secondary, dress_code,
                 invite_message, share_message, pix_key, logo_path, cover_photo_path, music_path,
                 color_primary, name_font, invite_style, show_countdown, show_calendar,
+                plan, gifts_enabled, guest_limit, admin_limit,
                 access_expires_at, price_charged, last_payment_at, payment_notes, created_at
          FROM events
          WHERE id = :id'
@@ -114,16 +115,20 @@ function fetch_event_row(PDO $pdo, int $eventId): ?array
 }
 
 /**
- * Visão do admin de evento: dados públicos + access_expires_at (para saber
- * quando precisa renovar) + modelo da mensagem de envio, sem nenhum campo
- * financeiro.
+ * Visão do admin de evento: dados públicos + plano + access_expires_at (para
+ * saber quando precisa renovar) + modelo da mensagem de envio, sem nenhum
+ * campo financeiro. A chave Pix vem sempre, mesmo com os presentes
+ * desligados: o formulário de configurações a devolve ao salvar, e assim
+ * desligar o módulo não apaga a chave.
  */
 function format_admin_event(array $event): array
 {
-    return format_public_event($event) + [
+    return array_merge(format_public_event($event), [
+        'pix_key' => $event['pix_key'],
+        'plan' => $event['plan'],
         'access_expires_at' => $event['access_expires_at'],
         'share_message' => $event['share_message'],
-    ];
+    ]);
 }
 
 /**

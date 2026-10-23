@@ -81,7 +81,8 @@ function require_super_admin(PDO $pdo): array
  * continuam acessando o convite normalmente mesmo com o acesso do
  * organizador expirado — só o painel admin daquele evento é bloqueado.
  * A exceção é a sessão aberta pelo super-admin ("entrar como admin"), que
- * existe justamente pra dar suporte, inclusive a evento expirado.
+ * existe justamente pra dar suporte, inclusive a evento expirado. O plano
+ * Ilimitado também ignora a data, como defesa extra (ele já grava NULL).
  */
 function require_event_admin(PDO $pdo): array
 {
@@ -94,11 +95,18 @@ function require_event_admin(PDO $pdo): array
         return $admin;
     }
 
-    $stmt = $pdo->prepare('SELECT access_expires_at FROM events WHERE id = :id');
+    $stmt = $pdo->prepare(
+        'SELECT access_expires_at, plan, gifts_enabled, guest_limit, admin_limit FROM events WHERE id = :id'
+    );
     $stmt->execute(['id' => $admin['event_id']]);
     $event = $stmt->fetch();
 
-    if ($event && $event['access_expires_at'] !== null && strtotime($event['access_expires_at']) <= time()) {
+    if (
+        $event
+        && event_entitlements($event)['access_expires']
+        && $event['access_expires_at'] !== null
+        && strtotime($event['access_expires_at']) <= time()
+    ) {
         json_error(403, 'O acesso a este evento expirou. Entre em contato com o suporte.', 'access_expired');
     }
 
