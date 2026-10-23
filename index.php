@@ -187,6 +187,11 @@ if ($method === 'PUT' && preg_match('#^/admin/super/events/(\d+)$#', $path, $m))
     handle_update_event($pdo, $config, (int) $m[1]);
 }
 
+if ($method === 'POST' && preg_match('#^/admin/super/events/(\d+)/impersonate$#', $path, $m)) {
+    $superAdmin = require_super_admin($pdo);
+    handle_impersonate_event_admin($pdo, $superAdmin, (int) $m[1]);
+}
+
 if ($method === 'DELETE' && preg_match('#^/admin/super/events/(\d+)$#', $path, $m)) {
     require_super_admin($pdo);
     handle_delete_event($pdo, (int) $m[1]);

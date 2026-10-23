@@ -17,7 +17,13 @@ function handle_list_events(PDO $pdo): void
          ORDER BY created_at DESC'
     );
 
-    json_response(200, ['events' => array_map('format_super_event', $stmt->fetchAll())]);
+    $stats = fetch_event_stats($pdo);
+    json_response(200, ['events' => array_map(
+        static fn (array $event): array => format_super_event($event) + [
+            'stats' => $stats[(int) $event['id']] ?? empty_event_stats(),
+        ],
+        $stmt->fetchAll()
+    )]);
 }
 
 /**
@@ -30,7 +36,116 @@ function handle_get_event_detail(PDO $pdo, int $id): void
         json_error(404, 'Evento não encontrado.');
     }
 
-    json_response(200, ['event' => format_super_event($event)]);
+    $stats = fetch_event_stats($pdo, $id);
+    json_response(200, ['event' => format_super_event($event) + [
+        'stats' => $stats[$id] ?? empty_event_stats(),
+    ]]);
+}
+
+/**
+ * POST /admin/super/events/{id}/impersonate
+ * "Entrar como admin": abre uma sessão curta no painel do evento, como o
+ * primeiro admin dele, marcada com o super-admin que entrou (ver
+ * admin_sessions.impersonated_by). Mesmo formato de resposta do login.
+ */
+function handle_impersonate_event_admin(PDO $pdo, array $superAdmin, int $id): void
+{
+    if (!fetch_event_row($pdo, $id)) {
+        json_error(404, 'Evento não encontrado.');
+    }
+
+    $stmt = $pdo->prepare(
+        'SELECT id, event_id, name, email FROM admin_users WHERE event_id = :event_id ORDER BY created_at ASC, id ASC LIMIT 1'
+    );
+    $stmt->execute(['event_id' => $id]);
+    $admin = $stmt->fetch();
+    if (!$admin) {
+        json_error(409, 'Este evento ainda não tem admin. Convide um na aba Admins.');
+    }
+
+    $token = generate_token();
+    $pdo->prepare(
+        'INSERT INTO admin_sessions (admin_user_id, impersonated_by, token, expires_at)
+         VALUES (:admin_user_id, :impersonated_by, :token, DATE_ADD(NOW(), INTERVAL 2 HOUR))'
+    )->execute([
+        'admin_user_id' => $admin['id'],
+        'impersonated_by' => $superAdmin['id'],
+        'token' => $token,
+    ]);
+
+    json_response(200, [
+        'token' => $token,
+        'admin' => [
+            'id' => (int) $admin['id'],
+            'event_id' => (int) $admin['event_id'],
+            'name' => $admin['name'],
+            'email' => $admin['email'],
+        ],
+    ]);
+}
+
+/**
+ * Números de cada evento para o painel do super-admin (todos, ou só um com
+ * $eventId): convites (titulares), pessoas (titulares + relacionados) por
+ * status, admins e presentes escolhidos. Agregado por evento em poucas
+ * consultas, em vez de uma por evento.
+ *
+ * @return array<int, array<string, int>> event_id => números
+ */
+function fetch_event_stats(PDO $pdo, ?int $eventId = null): array
+{
+    $where = $eventId !== null ? 'WHERE event_id = :event_id' : '';
+    $params = $eventId !== null ? ['event_id' => $eventId] : [];
+    $stats = [];
+
+    $guests = $pdo->prepare(
+        "SELECT event_id,
+                SUM(related_to_id IS NULL) AS invites,
+                COUNT(*) AS people,
+                SUM(status = 'confirmado') AS confirmed,
+                SUM(status = 'pendente') AS pending,
+                SUM(status = 'recusado') AS declined
+         FROM guests {$where}
+         GROUP BY event_id"
+    );
+    $guests->execute($params);
+    foreach ($guests->fetchAll() as $row) {
+        $stats[(int) $row['event_id']] = [
+            'invites' => (int) $row['invites'],
+            'people' => (int) $row['people'],
+            'confirmed' => (int) $row['confirmed'],
+            'pending' => (int) $row['pending'],
+            'declined' => (int) $row['declined'],
+        ] + empty_event_stats();
+    }
+
+    $admins = $pdo->prepare("SELECT event_id, COUNT(*) AS n FROM admin_users {$where} GROUP BY event_id");
+    $admins->execute($params);
+    foreach ($admins->fetchAll() as $row) {
+        if ($row['event_id'] === null) {
+            continue;
+        }
+        $stats[(int) $row['event_id']] = ['admins' => (int) $row['n']] + ($stats[(int) $row['event_id']] ?? empty_event_stats());
+    }
+
+    $claims = $pdo->prepare(
+        'SELECT gi.event_id, COUNT(*) AS n
+         FROM gift_claims gc
+         INNER JOIN gifts gi ON gi.id = gc.gift_id
+         ' . ($eventId !== null ? 'WHERE gi.event_id = :event_id' : '') . '
+         GROUP BY gi.event_id'
+    );
+    $claims->execute($params);
+    foreach ($claims->fetchAll() as $row) {
+        $stats[(int) $row['event_id']] = ['gift_claims' => (int) $row['n']] + ($stats[(int) $row['event_id']] ?? empty_event_stats());
+    }
+
+    return $stats;
+}
+
+function empty_event_stats(): array
+{
+    return ['invites' => 0, 'people' => 0, 'confirmed' => 0, 'pending' => 0, 'declined' => 0, 'admins' => 0, 'gift_claims' => 0];
 }
 
 /**

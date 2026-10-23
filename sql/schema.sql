@@ -90,13 +90,18 @@ CREATE TABLE IF NOT EXISTS admin_users (
 CREATE TABLE IF NOT EXISTS admin_sessions (
   id            INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   admin_user_id INT UNSIGNED NOT NULL,
+  -- super-admin que abriu esta sessão no painel do evento ("entrar como
+  -- admin", suporte); NULL = login normal. Ignora a expiração do evento.
+  impersonated_by INT UNSIGNED NULL,
   token         CHAR(64) NOT NULL,
   created_at    TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   expires_at    TIMESTAMP NOT NULL,
   UNIQUE KEY uq_admin_sessions_token (token),
   KEY idx_admin_sessions_user (admin_user_id),
   CONSTRAINT fk_admin_sessions_user
-    FOREIGN KEY (admin_user_id) REFERENCES admin_users(id) ON DELETE CASCADE
+    FOREIGN KEY (admin_user_id) REFERENCES admin_users(id) ON DELETE CASCADE,
+  CONSTRAINT fk_admin_sessions_impersonated_by
+    FOREIGN KEY (impersonated_by) REFERENCES admin_users(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- Tokens de "esqueci senha" e de convite de novo admin (mesmo mecanismo:

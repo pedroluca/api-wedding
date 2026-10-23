@@ -35,7 +35,7 @@ function require_admin(PDO $pdo): array
     }
 
     $stmt = $pdo->prepare(
-        'SELECT au.id, au.event_id, au.name, au.email
+        'SELECT au.id, au.event_id, au.name, au.email, s.impersonated_by
          FROM admin_sessions s
          INNER JOIN admin_users au ON au.id = s.admin_user_id
          WHERE s.token = :token AND s.expires_at > NOW()'
@@ -49,6 +49,7 @@ function require_admin(PDO $pdo): array
 
     $admin['id'] = (int) $admin['id'];
     $admin['event_id'] = $admin['event_id'] !== null ? (int) $admin['event_id'] : null;
+    $admin['impersonated_by'] = $admin['impersonated_by'] !== null ? (int) $admin['impersonated_by'] : null;
     $admin['_token'] = $token;
 
     return $admin;
@@ -79,12 +80,18 @@ function require_super_admin(PDO $pdo): array
  * Rotas públicas (/events/:slug/...) nunca chamam este guard: convidados
  * continuam acessando o convite normalmente mesmo com o acesso do
  * organizador expirado — só o painel admin daquele evento é bloqueado.
+ * A exceção é a sessão aberta pelo super-admin ("entrar como admin"), que
+ * existe justamente pra dar suporte, inclusive a evento expirado.
  */
 function require_event_admin(PDO $pdo): array
 {
     $admin = require_admin($pdo);
     if ($admin['event_id'] === null) {
         json_error(403, 'Esta ação requer um admin de evento.');
+    }
+
+    if ($admin['impersonated_by'] !== null) {
+        return $admin;
     }
 
     $stmt = $pdo->prepare('SELECT access_expires_at FROM events WHERE id = :id');
