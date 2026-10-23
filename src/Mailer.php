@@ -96,12 +96,27 @@ function build_password_set_email(string $name, string $link, string $purpose, ?
  * "Casamento de Fulano e Beltrano" / "Aniversário de Fulano" — usado no
  * assunto/corpo do email de convite (ver build_password_set_email()) pra
  * quem recebe o convite conseguir confirmar de cara se é o evento certo.
+ * No tipo 'other' o subtítulo faz as vezes do nome do evento
+ * ("Chá de bebê do Theo — Fulano e Beltrano").
  */
-function format_event_label(string $eventType, string $hostName, ?string $hostNameSecondary): string
-{
+function format_event_label(
+    string $eventType,
+    string $hostName,
+    ?string $hostNameSecondary,
+    ?string $subtitle = null
+): string {
     $names = $hostNameSecondary !== null && $hostNameSecondary !== ''
         ? "{$hostName} e {$hostNameSecondary}"
         : $hostName;
 
-    return $eventType === 'wedding' ? "Casamento de {$names}" : "Aniversário de {$names}";
+    $labels = [
+        'wedding' => "Casamento de {$names}",
+        'birthday' => "Aniversário de {$names}",
+        'graduation' => "Formatura de {$names}",
+    ];
+    if (isset($labels[$eventType])) {
+        return $labels[$eventType];
+    }
+
+    return $subtitle !== null && $subtitle !== '' ? "{$subtitle} — {$names}" : "Evento de {$names}";
 }

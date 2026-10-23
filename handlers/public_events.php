@@ -27,9 +27,10 @@ function handle_get_event(PDO $pdo, string $eventSlug): void
 function find_event_by_slug(PDO $pdo, string $slug): ?array
 {
     $stmt = $pdo->prepare(
-        'SELECT id, slug, event_type, host_name, host_name_secondary, event_date,
+        'SELECT id, slug, event_type, host_name, host_name_secondary, subtitle, event_date,
                 venue_name, venue_name_secondary, address, maps_url, maps_url_secondary, dress_code,
-                invite_message, pix_key, logo_path, cover_photo_path, music_path, color_primary, name_font
+                invite_message, pix_key, logo_path, cover_photo_path, music_path, color_primary, name_font,
+                invite_style, show_countdown, show_calendar, plan, gifts_enabled, guest_limit, admin_limit
          FROM events
          WHERE slug = :slug'
     );
@@ -45,13 +46,23 @@ function find_event_by_slug(PDO $pdo, string $slug): ?array
     return $event;
 }
 
+/**
+ * gifts_enabled já considera o plano (event_entitlements): é o que o
+ * convite mostra. Com o módulo de presentes desligado, a chave Pix também
+ * não sai daqui. show_credit: o "Feito com Presenzo" no rodapé do convite,
+ * que some só nos eventos Premium.
+ */
 function format_public_event(array $event): array
 {
+    $entitlements = event_entitlements($event);
+    $gifts = $entitlements['gifts'];
+
     return [
         'slug' => $event['slug'],
         'event_type' => $event['event_type'],
         'host_name' => $event['host_name'],
         'host_name_secondary' => $event['host_name_secondary'],
+        'subtitle' => $event['subtitle'],
         'event_date' => $event['event_date'],
         'venue_name' => $event['venue_name'],
         'venue_name_secondary' => $event['venue_name_secondary'],
@@ -60,11 +71,16 @@ function format_public_event(array $event): array
         'maps_url_secondary' => $event['maps_url_secondary'],
         'dress_code' => $event['dress_code'],
         'invite_message' => $event['invite_message'],
-        'pix_key' => $event['pix_key'],
+        'pix_key' => $gifts ? $event['pix_key'] : null,
         'logo_url' => public_asset_url($event['logo_path']),
         'cover_photo_url' => public_asset_url($event['cover_photo_path']),
         'music_url' => public_asset_url($event['music_path']),
         'color_primary' => $event['color_primary'],
         'name_font' => $event['name_font'],
+        'invite_style' => $event['invite_style'],
+        'show_countdown' => (bool) $event['show_countdown'],
+        'show_calendar' => (bool) $event['show_calendar'],
+        'gifts_enabled' => $gifts,
+        'show_credit' => !$entitlements['hide_credit'],
     ];
 }

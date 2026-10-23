@@ -51,7 +51,12 @@ function handle_create_event_admin(PDO $pdo, array $config, int $eventId): void
     }
 
     $adminId = create_event_admin($pdo, $eventId, $name, $email);
-    $eventLabel = format_event_label($event['event_type'], $event['host_name'], $event['host_name_secondary']);
+    $eventLabel = format_event_label(
+        $event['event_type'],
+        $event['host_name'],
+        $event['host_name_secondary'],
+        $event['subtitle']
+    );
     issue_and_send_password_token($pdo, $config, $adminId, $name, $email, 'invite', $eventLabel);
 
     json_response(201, ['admin' => ['id' => $adminId, 'name' => $name, 'email' => $email]]);

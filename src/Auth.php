@@ -35,7 +35,7 @@ function require_admin(PDO $pdo): array
     }
 
     $stmt = $pdo->prepare(
-        'SELECT au.id, au.event_id, au.name, au.email
+        'SELECT au.id, au.event_id, au.name, au.email, s.impersonated_by
          FROM admin_sessions s
          INNER JOIN admin_users au ON au.id = s.admin_user_id
          WHERE s.token = :token AND s.expires_at > NOW()'
@@ -49,6 +49,7 @@ function require_admin(PDO $pdo): array
 
     $admin['id'] = (int) $admin['id'];
     $admin['event_id'] = $admin['event_id'] !== null ? (int) $admin['event_id'] : null;
+    $admin['impersonated_by'] = $admin['impersonated_by'] !== null ? (int) $admin['impersonated_by'] : null;
     $admin['_token'] = $token;
 
     return $admin;
@@ -79,6 +80,9 @@ function require_super_admin(PDO $pdo): array
  * Rotas públicas (/events/:slug/...) nunca chamam este guard: convidados
  * continuam acessando o convite normalmente mesmo com o acesso do
  * organizador expirado — só o painel admin daquele evento é bloqueado.
+ * A exceção é a sessão aberta pelo super-admin ("entrar como admin"), que
+ * existe justamente pra dar suporte, inclusive a evento expirado. O plano
+ * Ilimitado também ignora a data, como defesa extra (ele já grava NULL).
  */
 function require_event_admin(PDO $pdo): array
 {
@@ -87,11 +91,22 @@ function require_event_admin(PDO $pdo): array
         json_error(403, 'Esta ação requer um admin de evento.');
     }
 
-    $stmt = $pdo->prepare('SELECT access_expires_at FROM events WHERE id = :id');
+    if ($admin['impersonated_by'] !== null) {
+        return $admin;
+    }
+
+    $stmt = $pdo->prepare(
+        'SELECT access_expires_at, plan, gifts_enabled, guest_limit, admin_limit FROM events WHERE id = :id'
+    );
     $stmt->execute(['id' => $admin['event_id']]);
     $event = $stmt->fetch();
 
-    if ($event && $event['access_expires_at'] !== null && strtotime($event['access_expires_at']) <= time()) {
+    if (
+        $event
+        && event_entitlements($event)['access_expires']
+        && $event['access_expires_at'] !== null
+        && strtotime($event['access_expires_at']) <= time()
+    ) {
         json_error(403, 'O acesso a este evento expirou. Entre em contato com o suporte.', 'access_expired');
     }
 

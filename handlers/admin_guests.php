@@ -57,13 +57,17 @@ function handle_list_guests(PDO $pdo, int $eventId): void
 /**
  * POST /admin/guests
  * Body: { "name": "...", "role"?: "padrinho" } — cria um convidado titular
- * (com link próprio) no evento do admin autenticado.
+ * (com link próprio) no evento do admin autenticado. Com a faixa de
+ * convidados no teto, responde 422 guest_limit (require_guest_room).
  */
 function handle_create_guest(PDO $pdo, int $eventId): void
 {
     $body = json_body();
     $name = require_string($body, 'name', 150);
     $role = read_guest_role($body);
+
+    $pdo->beginTransaction();
+    require_guest_room($pdo, $eventId);
 
     $stmt = $pdo->prepare('INSERT INTO guests (event_id, name, role) VALUES (:event_id, :name, :role)');
     $stmt->execute(['event_id' => $eventId, 'name' => $name, 'role' => $role]);
@@ -72,6 +76,7 @@ function handle_create_guest(PDO $pdo, int $eventId): void
     $slug = generate_guest_slug($name, $id);
     $update = $pdo->prepare('UPDATE guests SET slug = :slug WHERE id = :id');
     $update->execute(['slug' => $slug, 'id' => $id]);
+    $pdo->commit();
 
     json_response(201, [
         'guest' => [
@@ -90,7 +95,8 @@ function handle_create_guest(PDO $pdo, int $eventId): void
 /**
  * POST /admin/guests/{id}/dependents
  * Body: { "name": "..." } — adiciona um dependente ao titular {id}, desde
- * que ele pertença ao evento do admin autenticado.
+ * que ele pertença ao evento do admin autenticado. Relacionado também conta
+ * na faixa de convidados (422 guest_limit no teto).
  */
 function handle_create_dependent(PDO $pdo, int $eventId, int $titularId): void
 {
@@ -102,14 +108,19 @@ function handle_create_dependent(PDO $pdo, int $eventId, int $titularId): void
     $body = json_body();
     $name = require_string($body, 'name', 150);
 
+    $pdo->beginTransaction();
+    require_guest_room($pdo, $eventId);
+
     $stmt = $pdo->prepare(
         'INSERT INTO guests (event_id, name, related_to_id) VALUES (:event_id, :name, :related_to_id)'
     );
     $stmt->execute(['event_id' => $eventId, 'name' => $name, 'related_to_id' => $titularId]);
+    $dependentId = (int) $pdo->lastInsertId();
+    $pdo->commit();
 
     json_response(201, [
         'dependent' => [
-            'id' => (int) $pdo->lastInsertId(),
+            'id' => $dependentId,
             'name' => $name,
             'status' => 'pendente',
         ],

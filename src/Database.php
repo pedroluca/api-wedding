@@ -8,9 +8,13 @@ function db(array $config): PDO
 
     if ($pdo === null) {
         $db = $config['db'];
+        // port é opcional (ex: MariaDB local na 3307 ao lado de um MySQL na
+        // 3306). Com porta diferente da padrão, use host 127.0.0.1: com
+        // "localhost" o driver pode ir por socket/pipe e ignorar a porta.
         $dsn = sprintf(
-            'mysql:host=%s;dbname=%s;charset=%s',
+            'mysql:host=%s;port=%d;dbname=%s;charset=%s',
             $db['host'],
+            (int) ($db['port'] ?? 3306),
             $db['name'],
             $db['charset'] ?? 'utf8mb4'
         );

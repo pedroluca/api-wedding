@@ -9,13 +9,16 @@
 CREATE TABLE IF NOT EXISTS events (
   id                    INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   slug                  VARCHAR(180) NOT NULL,
-  event_type            ENUM('wedding','birthday') NOT NULL DEFAULT 'wedding',
+  event_type            ENUM('wedding','birthday','graduation','other') NOT NULL DEFAULT 'wedding',
 
   -- marca / dados do convite (nomes, data, local, chave Pix etc), preenchidos
   -- pelo admin do evento em vez de fixos no código. host_name_secondary e
   -- venue_name_secondary ficam NULL em eventos de um anfitrião só (ex: aniversário).
   host_name             VARCHAR(150) NOT NULL,
   host_name_secondary   VARCHAR(150) NULL,
+  -- linha opcional abaixo dos nomes ("Medicina · UFMG", "30 anos"); no tipo
+  -- 'other' faz as vezes do nome do evento ("Chá de bebê do Theo").
+  subtitle              VARCHAR(150) NULL,
   event_date            DATETIME NULL,
   venue_name            VARCHAR(190) NULL,
   venue_name_secondary  VARCHAR(190) NULL,
@@ -40,24 +43,49 @@ CREATE TABLE IF NOT EXISTS events (
   -- fonte usada no nome dos noivos/aniversariante na página do convite:
   -- 'sans' (padrão do site) ou uma das fontes de caligrafia disponíveis.
   name_font             ENUM('sans','fleur','pinyon') NOT NULL DEFAULT 'sans',
+  -- abertura do convite: 'direct' (direto no conteúdo), 'letter' (envelope
+  -- com aba), 'doors'/'vertical' (abertura central, para os lados ou para
+  -- cima e para baixo). Escolhida pelo admin do evento nas configurações.
+  invite_style          ENUM('direct','letter','doors','vertical') NOT NULL DEFAULT 'letter',
+  -- seções opcionais do convite (contagem regressiva, "Salve a data").
+  show_countdown        TINYINT(1) NOT NULL DEFAULT 1,
+  show_calendar         TINYINT(1) NOT NULL DEFAULT 1,
+
+  -- plano do evento: 'standard' (Padrão), 'premium' (Premium) ou
+  -- 'unlimited' (Ilimitado, interno: sem limites e sem prazo, para qualquer
+  -- evento que o admin superior quiser liberar). O que cada plano libera
+  -- fica em event_entitlements() (src/Plans.php).
+  plan                  ENUM('standard','premium','unlimited') NOT NULL DEFAULT 'standard',
+  -- módulo de presentes (lista + Pix). Desligado esconde, não apaga.
+  gifts_enabled         TINYINT(1) NOT NULL DEFAULT 1,
+  -- faixa de pessoas (titulares + relacionados) e admins contratados.
+  -- NULL = sem limite.
+  guest_limit           INT UNSIGNED NULL,
+  admin_limit           INT UNSIGNED NULL,
 
   -- ciclo de acesso do admin do evento. NULL = nunca expira. Quando
-  -- event_date é definida, o padrão é event_date + config('access.grace_days')
-  -- dias, calculado pelo backend ao criar/atualizar o evento — mas o
-  -- admin superior pode sempre sobrescrever manualmente (renovação).
+  -- event_date é definida, o padrão é event_date + o prazo do plano
+  -- (config access.grace_days, ou grace_days_premium no Premium),
+  -- calculado pelo backend ao criar o evento — mas o admin superior pode
+  -- sempre sobrescrever manualmente (renovação). Ilimitado = sempre NULL.
   access_expires_at     DATETIME NULL,
 
   -- controle financeiro do admin superior; sem nenhuma lógica de cobrança
   -- automatizada, apenas registro manual (o pagamento em si acontece fora
   -- do sistema, ex: Pix/transferência).
   price_charged         DECIMAL(10,2) NULL,
+  -- cupom usado na venda (coupons.code), pra contar os usos de cada cupom.
+  coupon_code           VARCHAR(40) NULL,
   last_payment_at       DATE NULL,
   payment_notes         VARCHAR(500) NULL,
+  -- JSON do orçamento usado na venda (histórico).
+  price_breakdown       TEXT NULL,
 
   created_at            TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at            TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
 
-  UNIQUE KEY uq_events_slug (slug)
+  UNIQUE KEY uq_events_slug (slug),
+  KEY idx_events_coupon_code (coupon_code)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- admin_users.event_id é o único sinal de papel do sistema:
@@ -80,13 +108,18 @@ CREATE TABLE IF NOT EXISTS admin_users (
 CREATE TABLE IF NOT EXISTS admin_sessions (
   id            INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   admin_user_id INT UNSIGNED NOT NULL,
+  -- super-admin que abriu esta sessão no painel do evento ("entrar como
+  -- admin", suporte); NULL = login normal. Ignora a expiração do evento.
+  impersonated_by INT UNSIGNED NULL,
   token         CHAR(64) NOT NULL,
   created_at    TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   expires_at    TIMESTAMP NOT NULL,
   UNIQUE KEY uq_admin_sessions_token (token),
   KEY idx_admin_sessions_user (admin_user_id),
   CONSTRAINT fk_admin_sessions_user
-    FOREIGN KEY (admin_user_id) REFERENCES admin_users(id) ON DELETE CASCADE
+    FOREIGN KEY (admin_user_id) REFERENCES admin_users(id) ON DELETE CASCADE,
+  CONSTRAINT fk_admin_sessions_impersonated_by
+    FOREIGN KEY (impersonated_by) REFERENCES admin_users(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- Tokens de "esqueci senha" e de convite de novo admin (mesmo mecanismo:
@@ -158,7 +191,7 @@ CREATE TABLE IF NOT EXISTS gifts (
 -- modelo original.
 CREATE TABLE IF NOT EXISTS gift_templates (
   id                INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-  event_type        ENUM('wedding','birthday') NOT NULL,
+  event_type        ENUM('wedding','birthday','graduation','other') NOT NULL,
   name              VARCHAR(150) NOT NULL,
   description       VARCHAR(500) NULL,
   image_path        VARCHAR(255) NULL,
@@ -184,4 +217,45 @@ CREATE TABLE IF NOT EXISTS gift_claims (
     FOREIGN KEY (gift_id) REFERENCES gifts(id) ON DELETE CASCADE,
   CONSTRAINT fk_gift_claims_guest
     FOREIGN KEY (guest_id) REFERENCES guests(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Matriz de preços ("Preços e planos" no super-admin). Valor base de cada
+-- tipo de evento (base_wedding, base_birthday, base_graduation, base_other)
+-- e dos adicionais (gifts, extra_admin, premium). O orçamento é calculado
+-- só no backend (compute_quote em src/Pricing.php).
+CREATE TABLE IF NOT EXISTS price_items (
+  item_key  VARCHAR(40) NOT NULL PRIMARY KEY,
+  label     VARCHAR(100) NOT NULL,
+  amount    DECIMAL(10,2) NOT NULL DEFAULT 0
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Faixas de convidados. A maior é aberta ("500+"): cobre qualquer
+-- quantidade acima e o evento vendido nela fica sem limite.
+CREATE TABLE IF NOT EXISTS guest_tiers (
+  id          INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  max_guests  INT UNSIGNED NOT NULL,
+  amount      DECIMAL(10,2) NOT NULL DEFAULT 0,
+  UNIQUE KEY uq_guest_tiers_max_guests (max_guests)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Parâmetros editáveis no super-admin (lista e limites em APP_SETTINGS,
+-- src/Pricing.php): guest_tolerance_percent, included_admins,
+-- grace_days_standard, grace_days_premium. Sem a chave, vale o config.php.
+CREATE TABLE IF NOT EXISTS app_settings (
+  setting_key  VARCHAR(40) NOT NULL PRIMARY KEY,
+  value        VARCHAR(100) NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Cupons de desconto aplicados no orçamento: em % (discount_value 20 =
+-- 20%) ou em reais. code sempre em maiúsculas. valid_until NULL = sem validade.
+CREATE TABLE IF NOT EXISTS coupons (
+  id              INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  code            VARCHAR(40) NOT NULL,
+  discount_type   ENUM('percent','amount') NOT NULL,
+  discount_value  DECIMAL(10,2) NOT NULL,
+  valid_until     DATE NULL,
+  active          TINYINT(1) NOT NULL DEFAULT 1,
+  notes           VARCHAR(255) NULL,
+  created_at      TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY uq_coupons_code (code)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

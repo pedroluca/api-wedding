@@ -11,6 +11,8 @@ require __DIR__ . '/src/Auth.php';
 require __DIR__ . '/src/Database.php';
 require __DIR__ . '/src/Uploads.php';
 require __DIR__ . '/src/Mailer.php';
+require __DIR__ . '/src/Plans.php';
+require __DIR__ . '/src/Pricing.php';
 require __DIR__ . '/handlers/public_events.php';
 require __DIR__ . '/handlers/public_guests.php';
 require __DIR__ . '/handlers/public_gifts.php';
@@ -22,6 +24,8 @@ require __DIR__ . '/handlers/admin_gifts.php';
 require __DIR__ . '/handlers/super_events.php';
 require __DIR__ . '/handlers/super_admins.php';
 require __DIR__ . '/handlers/gift_templates.php';
+require __DIR__ . '/handlers/pricing.php';
+require __DIR__ . '/handlers/coupons.php';
 
 $config = require __DIR__ . '/config.php';
 
@@ -48,6 +52,8 @@ try {
 } catch (Throwable $e) {
     json_error(500, 'Falha ao conectar ao banco de dados.');
 }
+
+load_app_settings($pdo, $config);
 
 $method = $_SERVER['REQUEST_METHOD'];
 $path = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH) ?? '/';
@@ -76,6 +82,15 @@ if ($method === 'GET' && preg_match('#^/events/([a-z0-9-]+)/guests/([a-z0-9-]+)/
 
 if ($method === 'POST' && preg_match('#^/events/([a-z0-9-]+)/guests/([a-z0-9-]+)/gifts/(\d+)/claim$#', $path, $m)) {
     handle_claim_gift($pdo, $m[1], $m[2], (int) $m[3]);
+}
+
+// --- preços (públicos: simulador da home e calculadora do super-admin) -----
+if ($method === 'GET' && $path === '/pricing') {
+    handle_get_pricing($pdo);
+}
+
+if ($method === 'POST' && $path === '/pricing/quote') {
+    handle_quote($pdo);
 }
 
 // --- autenticação e recuperação de senha admin ---------------------------
@@ -148,21 +163,25 @@ if ($method === 'DELETE' && preg_match('#^/admin/guests/(\d+)$#', $path, $m)) {
 // --- presentes --------------------------------------------------------------
 if ($method === 'GET' && $path === '/admin/gifts') {
     $admin = require_event_admin($pdo);
+    require_gifts_module($pdo, $admin['event_id']);
     handle_list_gifts($pdo, $admin['event_id']);
 }
 
 if ($method === 'POST' && $path === '/admin/gifts') {
     $admin = require_event_admin($pdo);
+    require_gifts_module($pdo, $admin['event_id']);
     handle_create_gift($pdo, $admin['event_id']);
 }
 
 if ($method === 'POST' && preg_match('#^/admin/gifts/(\d+)$#', $path, $m)) {
     $admin = require_event_admin($pdo);
+    require_gifts_module($pdo, $admin['event_id']);
     handle_update_gift($pdo, $admin['event_id'], (int) $m[1]);
 }
 
 if ($method === 'DELETE' && preg_match('#^/admin/gifts/(\d+)$#', $path, $m)) {
     $admin = require_event_admin($pdo);
+    require_gifts_module($pdo, $admin['event_id']);
     handle_delete_gift($pdo, $admin['event_id'], (int) $m[1]);
 }
 
@@ -185,6 +204,11 @@ if ($method === 'GET' && preg_match('#^/admin/super/events/(\d+)$#', $path, $m))
 if ($method === 'PUT' && preg_match('#^/admin/super/events/(\d+)$#', $path, $m)) {
     require_super_admin($pdo);
     handle_update_event($pdo, $config, (int) $m[1]);
+}
+
+if ($method === 'POST' && preg_match('#^/admin/super/events/(\d+)/impersonate$#', $path, $m)) {
+    $superAdmin = require_super_admin($pdo);
+    handle_impersonate_event_admin($pdo, $superAdmin, (int) $m[1]);
 }
 
 if ($method === 'DELETE' && preg_match('#^/admin/super/events/(\d+)$#', $path, $m)) {
@@ -234,14 +258,42 @@ if ($method === 'DELETE' && preg_match('#^/admin/super/gift-templates/(\d+)$#', 
     handle_delete_gift_template($pdo, (int) $m[1]);
 }
 
+// --- super-admin: preços, planos e cupons ------------------------------------
+if ($method === 'PUT' && $path === '/admin/super/pricing') {
+    require_super_admin($pdo);
+    handle_update_pricing($pdo, $config);
+}
+
+if ($method === 'GET' && $path === '/admin/super/coupons') {
+    require_super_admin($pdo);
+    handle_list_coupons($pdo);
+}
+
+if ($method === 'POST' && $path === '/admin/super/coupons') {
+    require_super_admin($pdo);
+    handle_create_coupon($pdo);
+}
+
+if ($method === 'PUT' && preg_match('#^/admin/super/coupons/(\d+)$#', $path, $m)) {
+    require_super_admin($pdo);
+    handle_update_coupon($pdo, (int) $m[1]);
+}
+
+if ($method === 'DELETE' && preg_match('#^/admin/super/coupons/(\d+)$#', $path, $m)) {
+    require_super_admin($pdo);
+    handle_delete_coupon($pdo, (int) $m[1]);
+}
+
 // --- admin de evento: prévia e clone dos modelos de presente -----------------
 if ($method === 'GET' && $path === '/admin/gift-templates') {
     $admin = require_event_admin($pdo);
+    require_gifts_module($pdo, $admin['event_id']);
     handle_list_gift_templates_for_own_event($pdo, $admin['event_id']);
 }
 
 if ($method === 'POST' && $path === '/admin/gift-templates/clone') {
     $admin = require_event_admin($pdo);
+    require_gifts_module($pdo, $admin['event_id']);
     handle_clone_gift_templates($pdo, $admin['event_id']);
 }
 

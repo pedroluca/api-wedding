@@ -11,6 +11,7 @@ declare(strict_types=1);
 return [
     'db' => [
         'host' => 'localhost',
+        // 'port' => 3307, // opcional, padrão 3306 (com porta, prefira host 127.0.0.1)
         'name' => 'wedding_db',
         'user' => 'wedding_user',
         'pass' => 'troque-esta-senha',
