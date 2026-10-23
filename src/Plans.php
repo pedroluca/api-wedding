@@ -14,7 +14,7 @@ const EVENT_PLANS = ['standard', 'premium', 'unlimited'];
  * nova é uma linha a mais neste array e um if onde ela aparece.
  *
  * @param array $event linha de events com plan, gifts_enabled, guest_limit e admin_limit
- * @return array{unlimited:bool,premium:bool,gifts:bool,access_expires:bool,guest_limit:?int,guest_cap:?int,admin_limit:?int}
+ * @return array{unlimited:bool,premium:bool,gifts:bool,access_expires:bool,hide_credit:bool,guest_limit:?int,guest_cap:?int,admin_limit:?int}
  */
 function event_entitlements(array $event): array
 {
@@ -28,6 +28,9 @@ function event_entitlements(array $event): array
         'premium' => $event['plan'] !== 'standard',
         'gifts' => $unlimited || (bool) $event['gifts_enabled'],
         'access_expires' => !$unlimited,
+        // sem o "Feito com Presenzo" no convite: só o Premium. O Ilimitado é
+        // usado em eventos próprios e da família e mantém o crédito, pra divulgar.
+        'hide_credit' => $event['plan'] === 'premium',
         'guest_limit' => $guestLimit,
         'guest_cap' => $guestLimit !== null ? guest_cap($guestLimit) : null,
         'admin_limit' => $limit($event['admin_limit']),

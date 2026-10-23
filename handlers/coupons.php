@@ -5,9 +5,11 @@ declare(strict_types=1);
 /**
  * Colunas do cupom no super-admin, com quantos eventos foram vendidos com ele
  * (events.coupon_code). Trocar o código de um cupom zera essa contagem.
+ * O COLLATE explícito deixa a comparação valer mesmo que events e coupons
+ * tenham collations diferentes (sem ele: "Illegal mix of collations").
  */
 const COUPON_COLUMNS = 'id, code, discount_type, discount_value, valid_until, active, notes, created_at,
-    (SELECT COUNT(*) FROM events WHERE events.coupon_code = coupons.code) AS uses';
+    (SELECT COUNT(*) FROM events WHERE events.coupon_code = coupons.code COLLATE utf8mb4_general_ci) AS uses';
 
 /**
  * GET /admin/super/coupons
