@@ -29,7 +29,8 @@ function find_event_by_slug(PDO $pdo, string $slug): ?array
     $stmt = $pdo->prepare(
         'SELECT id, slug, event_type, host_name, host_name_secondary, subtitle, event_date,
                 venue_name, venue_name_secondary, address, maps_url, maps_url_secondary, dress_code,
-                invite_message, pix_key, logo_path, cover_photo_path, music_path, color_primary, name_font
+                invite_message, pix_key, logo_path, cover_photo_path, music_path, color_primary, name_font,
+                invite_style
          FROM events
          WHERE slug = :slug'
     );
@@ -67,5 +68,6 @@ function format_public_event(array $event): array
         'music_url' => public_asset_url($event['music_path']),
         'color_primary' => $event['color_primary'],
         'name_font' => $event['name_font'],
+        'invite_style' => $event['invite_style'],
     ];
 }

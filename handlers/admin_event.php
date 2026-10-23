@@ -103,8 +103,8 @@ function fetch_event_row(PDO $pdo, int $eventId): ?array
         'SELECT id, slug, event_type, host_name, host_name_secondary, subtitle, event_date,
                 venue_name, venue_name_secondary, address, maps_url, maps_url_secondary, dress_code,
                 invite_message, share_message, pix_key, logo_path, cover_photo_path, music_path,
-                color_primary, name_font, access_expires_at, price_charged, last_payment_at,
-                payment_notes, created_at
+                color_primary, name_font, invite_style, access_expires_at, price_charged,
+                last_payment_at, payment_notes, created_at
          FROM events
          WHERE id = :id'
     );
@@ -194,8 +194,29 @@ function read_sent_branding_fields(array $body): array
     if (array_key_exists('subtitle', $body)) {
         $fields['subtitle'] = optional_string($body, 'subtitle', 150);
     }
+    if (array_key_exists('invite_style', $body)) {
+        $fields['invite_style'] = read_invite_style($body);
+    }
 
     return $fields;
+}
+
+const INVITE_STYLES = ['direct', 'letter', 'doors', 'vertical'];
+
+function read_invite_style(array $body): string
+{
+    $style = trim((string) ($body['invite_style'] ?? ''));
+    if (!in_array($style, INVITE_STYLES, true)) {
+        json_error(422, 'Estilo de abertura do convite inválido.');
+    }
+
+    return $style;
+}
+
+/** Estilo de um evento novo que não escolheu: casamento abre com envelope. */
+function default_invite_style(string $eventType): string
+{
+    return $eventType === 'wedding' ? 'letter' : 'direct';
 }
 
 /** ", subtitle = :subtitle" para os campos de read_sent_branding_fields(). */

@@ -43,6 +43,10 @@ CREATE TABLE IF NOT EXISTS events (
   -- fonte usada no nome dos noivos/aniversariante na página do convite:
   -- 'sans' (padrão do site) ou uma das fontes de caligrafia disponíveis.
   name_font             ENUM('sans','fleur','pinyon') NOT NULL DEFAULT 'sans',
+  -- abertura do convite: 'direct' (direto no conteúdo), 'letter' (envelope
+  -- com aba), 'doors'/'vertical' (abertura central, para os lados ou para
+  -- cima e para baixo). Escolhida pelo admin do evento nas configurações.
+  invite_style          ENUM('direct','letter','doors','vertical') NOT NULL DEFAULT 'letter',
 
   -- ciclo de acesso do admin do evento. NULL = nunca expira. Quando
   -- event_date é definida, o padrão é event_date + config('access.grace_days')
