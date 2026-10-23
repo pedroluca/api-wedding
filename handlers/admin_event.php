@@ -115,17 +115,25 @@ function fetch_event_row(PDO $pdo, int $eventId): ?array
 }
 
 /**
- * Visão do admin de evento: dados públicos + plano + access_expires_at (para
- * saber quando precisa renovar) + modelo da mensagem de envio, sem nenhum
- * campo financeiro. A chave Pix vem sempre, mesmo com os presentes
- * desligados: o formulário de configurações a devolve ao salvar, e assim
- * desligar o módulo não apaga a chave.
+ * Visão do admin de evento: dados públicos + plano + faixa de convidados +
+ * access_expires_at (para saber quando precisa renovar) + modelo da
+ * mensagem de envio, sem nenhum campo financeiro. A chave Pix vem sempre,
+ * mesmo com os presentes desligados: o formulário de configurações a
+ * devolve ao salvar, e assim desligar o módulo não apaga a chave.
+ *
+ * guest_limit/guest_cap já consideram o plano (null = sem limite). A
+ * contagem de pessoas fica com o front, que já tem a lista e atualiza a
+ * cada cadastro.
  */
 function format_admin_event(array $event): array
 {
+    $entitlements = event_entitlements($event);
+
     return array_merge(format_public_event($event), [
         'pix_key' => $event['pix_key'],
         'plan' => $event['plan'],
+        'guest_limit' => $entitlements['guest_limit'],
+        'guest_cap' => $entitlements['guest_cap'],
         'access_expires_at' => $event['access_expires_at'],
         'share_message' => $event['share_message'],
     ]);

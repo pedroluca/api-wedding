@@ -14,12 +14,13 @@ const EVENT_PLANS = ['standard', 'premium', 'unlimited'];
  * nova é uma linha a mais neste array e um if onde ela aparece.
  *
  * @param array $event linha de events com plan, gifts_enabled, guest_limit e admin_limit
- * @return array{unlimited:bool,premium:bool,gifts:bool,access_expires:bool,guest_limit:?int,admin_limit:?int}
+ * @return array{unlimited:bool,premium:bool,gifts:bool,access_expires:bool,guest_limit:?int,guest_cap:?int,admin_limit:?int}
  */
 function event_entitlements(array $event): array
 {
     $unlimited = $event['plan'] === 'unlimited';
     $limit = static fn ($value): ?int => $unlimited || $value === null ? null : (int) $value;
+    $guestLimit = $limit($event['guest_limit']);
 
     return [
         'unlimited' => $unlimited,
@@ -27,9 +28,58 @@ function event_entitlements(array $event): array
         'premium' => $event['plan'] !== 'standard',
         'gifts' => $unlimited || (bool) $event['gifts_enabled'],
         'access_expires' => !$unlimited,
-        'guest_limit' => $limit($event['guest_limit']),
+        'guest_limit' => $guestLimit,
+        'guest_cap' => $guestLimit !== null ? guest_cap($guestLimit) : null,
         'admin_limit' => $limit($event['admin_limit']),
     ];
+}
+
+/**
+ * Teto da faixa de convidados: o limite contratado mais a margem de
+ * tolerância (config limits.guest_tolerance_percent), arredondada pra cima.
+ * Com 20%: 50 → 60, 75 → 90, 100 → 120.
+ */
+function guest_cap(int $limit): int
+{
+    $percent = defined('GUEST_TOLERANCE_PERCENT') ? GUEST_TOLERANCE_PERCENT : 20;
+
+    return $limit + (int) ceil($limit * $percent / 100);
+}
+
+/**
+ * Antes de cadastrar uma pessoa (titular ou relacionado): com a faixa no
+ * teto, desfaz a transação e responde 422 guest_limit. Conta pessoas
+ * (titulares + relacionados), que é o que pesa no preço; apagar convidados
+ * libera vaga. Chamada dentro de uma transação: o FOR UPDATE no evento faz
+ * dois cadastros ao mesmo tempo esperarem um pelo outro, pra não passarem
+ * juntos do teto.
+ */
+function require_guest_room(PDO $pdo, int $eventId): void
+{
+    $stmt = $pdo->prepare(
+        'SELECT plan, gifts_enabled, guest_limit, admin_limit FROM events WHERE id = :id FOR UPDATE'
+    );
+    $stmt->execute(['id' => $eventId]);
+    $event = $stmt->fetch();
+    $entitlements = $event ? event_entitlements($event) : null;
+    if ($entitlements === null || $entitlements['guest_cap'] === null) {
+        return;
+    }
+
+    $count = $pdo->prepare('SELECT COUNT(*) FROM guests WHERE event_id = :event_id');
+    $count->execute(['event_id' => $eventId]);
+    if ((int) $count->fetchColumn() < $entitlements['guest_cap']) {
+        return;
+    }
+
+    if ($pdo->inTransaction()) {
+        $pdo->rollBack();
+    }
+    json_error(
+        422,
+        "Você chegou ao limite da faixa de {$entitlements['guest_limit']} convidados. Fale com a gente para mudar de faixa.",
+        'guest_limit'
+    );
 }
 
 /**

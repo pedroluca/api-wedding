@@ -51,6 +51,11 @@ $config = [
         // não tem prazo (ver plan_grace_days em src/Plans.php).
         'grace_days_premium' => 30,
     ],
+    'limits' => [
+        // Margem acima da faixa de convidados contratada antes de travar o
+        // cadastro (50 → até 60). Ver guest_cap em src/Plans.php.
+        'guest_tolerance_percent' => 20,
+    ],
     'password_token_ttl_hours' => [
         'invite' => 168,
         'reset' => 1,

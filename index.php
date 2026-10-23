@@ -27,6 +27,7 @@ require __DIR__ . '/handlers/gift_templates.php';
 $config = require __DIR__ . '/config.php';
 
 define('ASSETS_FALLBACK_URL', rtrim((string) ($config['app']['assets_fallback_url'] ?? ''), '/'));
+define('GUEST_TOLERANCE_PERCENT', (int) ($config['limits']['guest_tolerance_percent'] ?? 20));
 
 // CORS: front e api vivem em subdomínios diferentes, então liberamos
 // explicitamente as origens configuradas (sem uso de cookies).
