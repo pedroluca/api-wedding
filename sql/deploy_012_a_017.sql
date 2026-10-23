@@ -2,28 +2,42 @@
 -- do super ("entrar como admin"), planos, faixa de convidados, preços,
 -- cupons e orçamento guardado no evento. A 011 já rodou em produção.
 --
+-- Como rodar no phpMyAdmin: clique primeiro no banco do Presenzo na lista da
+-- esquerda e só então abra a aba SQL e cole este arquivo inteiro.
+--
 -- Pode rodar mais de uma vez sem estragar nada: cada passo confere se já foi
--- feito (IF NOT EXISTS) e os dados iniciais só entram se ainda não existem.
--- Se parar no meio por algum erro, corrija e rode o arquivo inteiro de novo.
+-- feito (IF NOT EXISTS), os dados iniciais só entram se ainda não existem e
+-- o ajuste de dados da 012 fica registrado em schema_migrations. Se parar no
+-- meio por algum erro, corrija e rode o arquivo inteiro de novo.
+--
+-- Não consulta o information_schema de propósito: o phpMyAdmin troca de banco
+-- ao ver essa referência, e o "ALTER TABLE events" seguinte cai na tabela
+-- EVENTS do information_schema (erro #1044, acesso negado).
 --
 -- Antes: faça um backup do banco (Exportar, no phpMyAdmin).
 -- Ordem do deploy: este SQL → API → front.
 -- Os arquivos em sql/migrations/ continuam sendo o histórico, passo a passo.
 
 
+-- Registro das migrações aplicadas por este script.
+CREATE TABLE IF NOT EXISTS schema_migrations (
+  name        VARCHAR(40) NOT NULL PRIMARY KEY,
+  applied_at  TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+
 -- 012: estilo de abertura do convite -----------------------------------------
 -- Casamentos ficam com o envelope que já usavam ('letter'); os demais tipos
--- não tinham envelope e ficam com 'direct'. Esse ajuste só roda na primeira
--- vez: depois, o estilo é escolha do admin do evento.
-SET @tinha_invite_style = (
-  SELECT COUNT(*) FROM information_schema.COLUMNS
-  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'events' AND COLUMN_NAME = 'invite_style'
-);
-
+-- não tinham envelope e ficam com 'direct'. Esse ajuste só roda uma vez
+-- (schema_migrations): depois, o estilo é escolha do admin do evento.
 ALTER TABLE events
   ADD COLUMN IF NOT EXISTS invite_style ENUM('direct','letter','doors','vertical') NOT NULL DEFAULT 'letter' AFTER name_font;
 
-UPDATE events SET invite_style = 'direct' WHERE event_type <> 'wedding' AND @tinha_invite_style = 0;
+UPDATE events SET invite_style = 'direct'
+WHERE event_type <> 'wedding'
+  AND NOT EXISTS (SELECT 1 FROM schema_migrations WHERE name = '012_events_invite_style');
+
+INSERT IGNORE INTO schema_migrations (name) VALUES ('012_events_invite_style');
 
 
 -- 013: seções opcionais do convite (contagem regressiva, "Salve a data") ----
@@ -31,12 +45,16 @@ ALTER TABLE events
   ADD COLUMN IF NOT EXISTS show_countdown TINYINT(1) NOT NULL DEFAULT 1 AFTER invite_style,
   ADD COLUMN IF NOT EXISTS show_calendar TINYINT(1) NOT NULL DEFAULT 1 AFTER show_countdown;
 
+INSERT IGNORE INTO schema_migrations (name) VALUES ('013_events_invite_sections');
+
 
 -- 014: sessão aberta pelo super-admin ("entrar como admin") -----------------
 ALTER TABLE admin_sessions
   ADD COLUMN IF NOT EXISTS impersonated_by INT UNSIGNED NULL AFTER admin_user_id,
   ADD CONSTRAINT fk_admin_sessions_impersonated_by
     FOREIGN KEY IF NOT EXISTS (impersonated_by) REFERENCES admin_users(id) ON DELETE CASCADE;
+
+INSERT IGNORE INTO schema_migrations (name) VALUES ('014_admin_sessions_impersonation');
 
 
 -- 015: plano do evento e o que foi contratado --------------------------------
@@ -47,6 +65,8 @@ ALTER TABLE events
   ADD COLUMN IF NOT EXISTS guest_limit INT UNSIGNED NULL AFTER gifts_enabled,
   ADD COLUMN IF NOT EXISTS admin_limit INT UNSIGNED NULL AFTER guest_limit,
   ADD COLUMN IF NOT EXISTS price_breakdown TEXT NULL AFTER payment_notes;
+
+INSERT IGNORE INTO schema_migrations (name) VALUES ('015_events_plan');
 
 
 -- 016: matriz de preços, parâmetros editáveis e cupons -----------------------
@@ -103,18 +123,27 @@ CREATE TABLE IF NOT EXISTS coupons (
   UNIQUE KEY uq_coupons_code (code)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+INSERT IGNORE INTO schema_migrations (name) VALUES ('016_pricing');
+
 
 -- 017: cupom usado na venda do evento ----------------------------------------
 ALTER TABLE events
   ADD COLUMN IF NOT EXISTS coupon_code VARCHAR(40) NULL AFTER price_charged,
   ADD KEY IF NOT EXISTS idx_events_coupon_code (coupon_code);
 
+INSERT IGNORE INTO schema_migrations (name) VALUES ('017_events_coupon');
 
--- Conferência: deve listar as 4 tabelas novas e as colunas novas de events.
-SELECT TABLE_NAME AS tabela_nova FROM information_schema.TABLES
-WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME IN ('price_items', 'guest_tiers', 'app_settings', 'coupons');
 
-SELECT COLUMN_NAME AS coluna_nova_em_events FROM information_schema.COLUMNS
-WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'events'
-  AND COLUMN_NAME IN ('invite_style', 'show_countdown', 'show_calendar', 'plan', 'gifts_enabled',
-                      'guest_limit', 'admin_limit', 'price_breakdown', 'coupon_code');
+-- Conferência: se esta consulta rodar sem erro, todas as colunas novas de
+-- events existem.
+SELECT invite_style, show_countdown, show_calendar, plan, gifts_enabled,
+       guest_limit, admin_limit, price_breakdown, coupon_code
+FROM events
+LIMIT 1;
+
+-- E esta deve mostrar 7 preços, 6 faixas, 4 parâmetros e as 6 migrações.
+SELECT (SELECT COUNT(*) FROM price_items) AS precos,
+       (SELECT COUNT(*) FROM guest_tiers) AS faixas,
+       (SELECT COUNT(*) FROM app_settings) AS parametros,
+       (SELECT COUNT(*) FROM coupons) AS cupons,
+       (SELECT GROUP_CONCAT(name ORDER BY name SEPARATOR ', ') FROM schema_migrations) AS migracoes;

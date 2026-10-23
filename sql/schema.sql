@@ -259,3 +259,10 @@ CREATE TABLE IF NOT EXISTS coupons (
   created_at      TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   UNIQUE KEY uq_coupons_code (code)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Registro das migrações aplicadas pelos scripts de deploy (sql/deploy_*.sql),
+-- que confere se um ajuste de dados já rodou sem consultar o information_schema.
+CREATE TABLE IF NOT EXISTS schema_migrations (
+  name        VARCHAR(40) NOT NULL PRIMARY KEY,
+  applied_at  TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
