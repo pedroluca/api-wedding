@@ -8,7 +8,7 @@ declare(strict_types=1);
 function handle_list_events(PDO $pdo): void
 {
     $stmt = $pdo->query(
-        'SELECT id, slug, event_type, host_name, host_name_secondary, event_date,
+        'SELECT id, slug, event_type, host_name, host_name_secondary, subtitle, event_date,
                 venue_name, venue_name_secondary, address, maps_url, maps_url_secondary, dress_code,
                 invite_message, share_message, pix_key, logo_path, cover_photo_path, music_path,
                 color_primary, name_font, access_expires_at, price_charged, last_payment_at,
@@ -43,6 +43,7 @@ function handle_get_event_detail(PDO $pdo, int $id): void
 function handle_create_event(PDO $pdo, array $config): void
 {
     $fields = read_event_branding_fields($_POST);
+    $fields['subtitle'] = optional_string($_POST, 'subtitle', 150);
     $eventType = read_event_type($_POST);
 
     $adminName = require_string($_POST, 'admin_name', 150);
@@ -66,11 +67,11 @@ function handle_create_event(PDO $pdo, array $config): void
 
         $insert = $pdo->prepare(
             'INSERT INTO events
-               (slug, event_type, host_name, host_name_secondary, event_date, venue_name,
+               (slug, event_type, host_name, host_name_secondary, subtitle, event_date, venue_name,
                 venue_name_secondary, address, maps_url, maps_url_secondary, dress_code,
                 invite_message, pix_key, logo_path, color_primary, name_font, access_expires_at)
              VALUES
-               (:slug, :event_type, :host_name, :host_name_secondary, :event_date, :venue_name,
+               (:slug, :event_type, :host_name, :host_name_secondary, :subtitle, :event_date, :venue_name,
                 :venue_name_secondary, :address, :maps_url, :maps_url_secondary, :dress_code,
                 :invite_message, :pix_key, :logo_path, :color_primary, :name_font, :access_expires_at)'
         );
@@ -94,7 +95,12 @@ function handle_create_event(PDO $pdo, array $config): void
 
     // Fora da transação: envio de email é I/O externo e, se falhar, o admin
     // recém-criado ainda pode recuperar acesso depois via "esqueci minha senha".
-    $eventLabel = format_event_label($eventType, $fields['host_name'], $fields['host_name_secondary']);
+    $eventLabel = format_event_label(
+        $eventType,
+        $fields['host_name'],
+        $fields['host_name_secondary'],
+        $fields['subtitle']
+    );
     issue_and_send_password_token($pdo, $config, $adminId, $adminName, $adminEmail, 'invite', $eventLabel);
 
     json_response(201, ['event' => format_super_event(fetch_event_row($pdo, $eventId))]);
@@ -123,6 +129,7 @@ function handle_update_event(PDO $pdo, array $config, int $id): void
 
     $body = json_body();
     $fields = read_event_branding_fields($body);
+    $sentFields = read_sent_branding_fields($body);
     $eventType = read_event_type($body);
     $accessExpiresAt = optional_datetime($body, 'access_expires_at');
     $priceCharged = optional_decimal($body, 'price_charged');
@@ -136,10 +143,11 @@ function handle_update_event(PDO $pdo, array $config, int $id): void
              address = :address, maps_url = :maps_url, maps_url_secondary = :maps_url_secondary,
              dress_code = :dress_code, invite_message = :invite_message, pix_key = :pix_key,
              color_primary = :color_primary, name_font = :name_font, access_expires_at = :access_expires_at,
-             price_charged = :price_charged, last_payment_at = :last_payment_at, payment_notes = :payment_notes
+             price_charged = :price_charged, last_payment_at = :last_payment_at, payment_notes = :payment_notes'
+        . sent_fields_set_clause($sentFields) . '
          WHERE id = :id'
     );
-    $stmt->execute($fields + [
+    $stmt->execute($fields + $sentFields + [
         'event_type' => $eventType,
         'access_expires_at' => $accessExpiresAt,
         'price_charged' => $priceCharged,
@@ -228,7 +236,7 @@ function compute_access_expires_at(array $body, ?string $eventDate, array $confi
 function read_event_type(array $body): string
 {
     $type = trim((string) ($body['event_type'] ?? 'wedding'));
-    if (!in_array($type, ['wedding', 'birthday'], true)) {
+    if (!in_array($type, ['wedding', 'birthday', 'graduation', 'other'], true)) {
         json_error(422, 'Tipo de evento inválido.');
     }
 

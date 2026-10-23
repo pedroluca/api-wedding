@@ -27,7 +27,7 @@ function handle_get_event(PDO $pdo, string $eventSlug): void
 function find_event_by_slug(PDO $pdo, string $slug): ?array
 {
     $stmt = $pdo->prepare(
-        'SELECT id, slug, event_type, host_name, host_name_secondary, event_date,
+        'SELECT id, slug, event_type, host_name, host_name_secondary, subtitle, event_date,
                 venue_name, venue_name_secondary, address, maps_url, maps_url_secondary, dress_code,
                 invite_message, pix_key, logo_path, cover_photo_path, music_path, color_primary, name_font
          FROM events
@@ -52,6 +52,7 @@ function format_public_event(array $event): array
         'event_type' => $event['event_type'],
         'host_name' => $event['host_name'],
         'host_name_secondary' => $event['host_name_secondary'],
+        'subtitle' => $event['subtitle'],
         'event_date' => $event['event_date'],
         'venue_name' => $event['venue_name'],
         'venue_name_secondary' => $event['venue_name_secondary'],

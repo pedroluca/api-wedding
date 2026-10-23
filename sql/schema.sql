@@ -9,13 +9,16 @@
 CREATE TABLE IF NOT EXISTS events (
   id                    INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   slug                  VARCHAR(180) NOT NULL,
-  event_type            ENUM('wedding','birthday') NOT NULL DEFAULT 'wedding',
+  event_type            ENUM('wedding','birthday','graduation','other') NOT NULL DEFAULT 'wedding',
 
   -- marca / dados do convite (nomes, data, local, chave Pix etc), preenchidos
   -- pelo admin do evento em vez de fixos no código. host_name_secondary e
   -- venue_name_secondary ficam NULL em eventos de um anfitrião só (ex: aniversário).
   host_name             VARCHAR(150) NOT NULL,
   host_name_secondary   VARCHAR(150) NULL,
+  -- linha opcional abaixo dos nomes ("Medicina · UFMG", "30 anos"); no tipo
+  -- 'other' faz as vezes do nome do evento ("Chá de bebê do Theo").
+  subtitle              VARCHAR(150) NULL,
   event_date            DATETIME NULL,
   venue_name            VARCHAR(190) NULL,
   venue_name_secondary  VARCHAR(190) NULL,
@@ -158,7 +161,7 @@ CREATE TABLE IF NOT EXISTS gifts (
 -- modelo original.
 CREATE TABLE IF NOT EXISTS gift_templates (
   id                INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-  event_type        ENUM('wedding','birthday') NOT NULL,
+  event_type        ENUM('wedding','birthday','graduation','other') NOT NULL,
   name              VARCHAR(150) NOT NULL,
   description       VARCHAR(500) NULL,
   image_path        VARCHAR(255) NULL,

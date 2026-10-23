@@ -28,6 +28,7 @@ function handle_get_own_event(PDO $pdo, int $eventId): void
  * etc só são graváveis pelo super-admin, mesmo que venham no corpo.
  * share_message fica fora de read_event_branding_fields de propósito: é
  * só do admin do evento, e assim o PUT do super-admin nunca o apaga.
+ * Campos mais novos (read_sent_branding_fields) só mudam quando vêm no corpo.
  */
 function handle_update_own_event(PDO $pdo, int $eventId): void
 {
@@ -38,6 +39,7 @@ function handle_update_own_event(PDO $pdo, int $eventId): void
 
     $fields = read_event_branding_fields($_POST);
     $fields['share_message'] = optional_text($_POST, 'share_message', 1000);
+    $sentFields = read_sent_branding_fields($_POST);
 
     $logoPath = $existing['logo_path'];
     if (has_uploaded_file('logo')) {
@@ -67,10 +69,11 @@ function handle_update_own_event(PDO $pdo, int $eventId): void
              dress_code = :dress_code, invite_message = :invite_message,
              share_message = :share_message, pix_key = :pix_key,
              color_primary = :color_primary, name_font = :name_font, logo_path = :logo_path,
-             cover_photo_path = :cover_photo_path, music_path = :music_path
+             cover_photo_path = :cover_photo_path, music_path = :music_path'
+        . sent_fields_set_clause($sentFields) . '
          WHERE id = :id'
     );
-    $stmt->execute($fields + [
+    $stmt->execute($fields + $sentFields + [
         'logo_path' => $logoPath,
         'cover_photo_path' => $coverPhotoPath,
         'music_path' => $musicPath,
@@ -97,7 +100,7 @@ function handle_update_own_event(PDO $pdo, int $eventId): void
 function fetch_event_row(PDO $pdo, int $eventId): ?array
 {
     $stmt = $pdo->prepare(
-        'SELECT id, slug, event_type, host_name, host_name_secondary, event_date,
+        'SELECT id, slug, event_type, host_name, host_name_secondary, subtitle, event_date,
                 venue_name, venue_name_secondary, address, maps_url, maps_url_secondary, dress_code,
                 invite_message, share_message, pix_key, logo_path, cover_photo_path, music_path,
                 color_primary, name_font, access_expires_at, price_charged, last_payment_at,
@@ -175,6 +178,33 @@ function read_event_branding_fields(array $body): array
         'color_primary' => $colorPrimary,
         'name_font' => $nameFont,
     ];
+}
+
+/**
+ * Campos de marca que chegaram depois dos formulários originais: só entram
+ * no UPDATE quando vêm no corpo. Como a API sobe antes do front em cada
+ * deploy, um front ainda sem o campo salva as configurações sem apagá-lo.
+ * Para limpar, o front manda o campo vazio.
+ *
+ * @return array<string, ?string> coluna => valor, só com os campos enviados
+ */
+function read_sent_branding_fields(array $body): array
+{
+    $fields = [];
+    if (array_key_exists('subtitle', $body)) {
+        $fields['subtitle'] = optional_string($body, 'subtitle', 150);
+    }
+
+    return $fields;
+}
+
+/** ", subtitle = :subtitle" para os campos de read_sent_branding_fields(). */
+function sent_fields_set_clause(array $sentFields): string
+{
+    return implode('', array_map(
+        static fn (string $column): string => ", {$column} = :{$column}",
+        array_keys($sentFields)
+    ));
 }
 
 function optional_string(array $body, string $key, int $maxLength): ?string
