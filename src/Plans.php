@@ -36,14 +36,12 @@ function event_entitlements(array $event): array
 
 /**
  * Teto da faixa de convidados: o limite contratado mais a margem de
- * tolerância (config limits.guest_tolerance_percent), arredondada pra cima.
+ * tolerância (app_settings guest_tolerance_percent), arredondada pra cima.
  * Com 20%: 50 → 60, 75 → 90, 100 → 120.
  */
 function guest_cap(int $limit): int
 {
-    $percent = defined('GUEST_TOLERANCE_PERCENT') ? GUEST_TOLERANCE_PERCENT : 20;
-
-    return $limit + (int) ceil($limit * $percent / 100);
+    return $limit + (int) ceil($limit * app_setting('guest_tolerance_percent') / 100);
 }
 
 /**
@@ -83,15 +81,15 @@ function require_guest_room(PDO $pdo, int $eventId): void
 }
 
 /**
- * Dias de acesso ao painel depois da data do evento. O Premium tem o dobro
- * do Padrão; o Ilimitado não tem prazo (null).
+ * Dias de acesso ao painel depois da data do evento (app_settings). O
+ * Premium tem o dobro do Padrão; o Ilimitado não tem prazo (null).
  */
-function plan_grace_days(string $plan, array $config): ?int
+function plan_grace_days(string $plan): ?int
 {
     return match ($plan) {
         'unlimited' => null,
-        'premium' => (int) ($config['access']['grace_days_premium'] ?? 30),
-        default => (int) ($config['access']['grace_days'] ?? 15),
+        'premium' => app_setting('grace_days_premium'),
+        default => app_setting('grace_days_standard'),
     };
 }
 

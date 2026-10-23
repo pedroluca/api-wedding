@@ -49,11 +49,14 @@ $config = [
         'grace_days' => 15,
         // O mesmo para eventos Premium: o dobro do Padrão. O plano Ilimitado
         // não tem prazo (ver plan_grace_days em src/Plans.php).
+        // Os dois são só reserva: o valor em vigor fica em app_settings
+        // (grace_days_standard/grace_days_premium), editável no super-admin.
         'grace_days_premium' => 30,
     ],
     'limits' => [
         // Margem acima da faixa de convidados contratada antes de travar o
-        // cadastro (50 → até 60). Ver guest_cap em src/Plans.php.
+        // cadastro (50 → até 60). Ver guest_cap em src/Plans.php. Reserva: o
+        // valor em vigor fica em app_settings, editável no super-admin.
         'guest_tolerance_percent' => 20,
     ],
     'password_token_ttl_hours' => [

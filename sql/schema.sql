@@ -74,6 +74,8 @@ CREATE TABLE IF NOT EXISTS events (
   -- automatizada, apenas registro manual (o pagamento em si acontece fora
   -- do sistema, ex: Pix/transferência).
   price_charged         DECIMAL(10,2) NULL,
+  -- cupom usado na venda (coupons.code), pra contar os usos de cada cupom.
+  coupon_code           VARCHAR(40) NULL,
   last_payment_at       DATE NULL,
   payment_notes         VARCHAR(500) NULL,
   -- JSON do orçamento usado na venda (histórico).
@@ -82,7 +84,8 @@ CREATE TABLE IF NOT EXISTS events (
   created_at            TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at            TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
 
-  UNIQUE KEY uq_events_slug (slug)
+  UNIQUE KEY uq_events_slug (slug),
+  KEY idx_events_coupon_code (coupon_code)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- admin_users.event_id é o único sinal de papel do sistema:
@@ -214,4 +217,45 @@ CREATE TABLE IF NOT EXISTS gift_claims (
     FOREIGN KEY (gift_id) REFERENCES gifts(id) ON DELETE CASCADE,
   CONSTRAINT fk_gift_claims_guest
     FOREIGN KEY (guest_id) REFERENCES guests(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Matriz de preços ("Preços e planos" no super-admin). Valor base de cada
+-- tipo de evento (base_wedding, base_birthday, base_graduation, base_other)
+-- e dos adicionais (gifts, extra_admin, premium). O orçamento é calculado
+-- só no backend (compute_quote em src/Pricing.php).
+CREATE TABLE IF NOT EXISTS price_items (
+  item_key  VARCHAR(40) NOT NULL PRIMARY KEY,
+  label     VARCHAR(100) NOT NULL,
+  amount    DECIMAL(10,2) NOT NULL DEFAULT 0
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Faixas de convidados. A maior é aberta ("500+"): cobre qualquer
+-- quantidade acima e o evento vendido nela fica sem limite.
+CREATE TABLE IF NOT EXISTS guest_tiers (
+  id          INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  max_guests  INT UNSIGNED NOT NULL,
+  amount      DECIMAL(10,2) NOT NULL DEFAULT 0,
+  UNIQUE KEY uq_guest_tiers_max_guests (max_guests)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Parâmetros editáveis no super-admin (lista e limites em APP_SETTINGS,
+-- src/Pricing.php): guest_tolerance_percent, included_admins,
+-- grace_days_standard, grace_days_premium. Sem a chave, vale o config.php.
+CREATE TABLE IF NOT EXISTS app_settings (
+  setting_key  VARCHAR(40) NOT NULL PRIMARY KEY,
+  value        VARCHAR(100) NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Cupons de desconto aplicados no orçamento: em % (discount_value 20 =
+-- 20%) ou em reais. code sempre em maiúsculas. valid_until NULL = sem validade.
+CREATE TABLE IF NOT EXISTS coupons (
+  id              INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  code            VARCHAR(40) NOT NULL,
+  discount_type   ENUM('percent','amount') NOT NULL,
+  discount_value  DECIMAL(10,2) NOT NULL,
+  valid_until     DATE NULL,
+  active          TINYINT(1) NOT NULL DEFAULT 1,
+  notes           VARCHAR(255) NULL,
+  created_at      TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY uq_coupons_code (code)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

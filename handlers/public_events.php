@@ -49,11 +49,13 @@ function find_event_by_slug(PDO $pdo, string $slug): ?array
 /**
  * gifts_enabled já considera o plano (event_entitlements): é o que o
  * convite mostra. Com o módulo de presentes desligado, a chave Pix também
- * não sai daqui.
+ * não sai daqui. show_credit: o "Feito com Presenzo" no rodapé do convite,
+ * que some nos eventos Premium (e no Ilimitado, que tem tudo do Premium).
  */
 function format_public_event(array $event): array
 {
-    $gifts = event_entitlements($event)['gifts'];
+    $entitlements = event_entitlements($event);
+    $gifts = $entitlements['gifts'];
 
     return [
         'slug' => $event['slug'],
@@ -79,5 +81,6 @@ function format_public_event(array $event): array
         'show_countdown' => (bool) $event['show_countdown'],
         'show_calendar' => (bool) $event['show_calendar'],
         'gifts_enabled' => $gifts,
+        'show_credit' => !$entitlements['premium'],
     ];
 }

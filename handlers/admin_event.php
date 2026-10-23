@@ -105,7 +105,8 @@ function fetch_event_row(PDO $pdo, int $eventId): ?array
                 invite_message, share_message, pix_key, logo_path, cover_photo_path, music_path,
                 color_primary, name_font, invite_style, show_countdown, show_calendar,
                 plan, gifts_enabled, guest_limit, admin_limit,
-                access_expires_at, price_charged, last_payment_at, payment_notes, created_at
+                access_expires_at, price_charged, coupon_code, price_breakdown, last_payment_at,
+                payment_notes, created_at
          FROM events
          WHERE id = :id'
     );

@@ -13,7 +13,8 @@ function handle_list_events(PDO $pdo): void
                 invite_message, share_message, pix_key, logo_path, cover_photo_path, music_path,
                 color_primary, name_font, invite_style, show_countdown, show_calendar,
                 plan, gifts_enabled, guest_limit, admin_limit,
-                access_expires_at, price_charged, last_payment_at, payment_notes, created_at
+                access_expires_at, price_charged, coupon_code, price_breakdown, last_payment_at,
+                payment_notes, created_at
          FROM events
          ORDER BY created_at DESC'
     );
@@ -152,7 +153,8 @@ function empty_event_stats(): array
 /**
  * POST /admin/super/events
  * multipart/form-data: campos de marca (ver read_event_branding_fields),
- * event_type, plano e contratado (read_sent_plan_fields), logo opcional, e
+ * event_type, plano e contratado (read_sent_plan_fields), orçamento aplicado
+ * (quote, ver read_sent_quote) e valor cobrado, logo opcional, e
  * admin_name/admin_email do primeiro admin do evento. Cria o evento (com
  * slug gerado a partir dos nomes), o primeiro admin (senha inutilizável) e
  * dispara o email de convite.
@@ -173,6 +175,9 @@ function handle_create_event(PDO $pdo, array $config): void
         'admin_limit' => null,
     ];
 
+    $quoteFields = read_sent_quote($pdo, $_POST) + ['price_breakdown' => null, 'coupon_code' => null];
+    $priceCharged = optional_decimal($_POST, 'price_charged');
+
     $adminName = require_string($_POST, 'admin_name', 150);
     $adminEmail = trim((string) ($_POST['admin_email'] ?? ''));
     if ($adminEmail === '' || !filter_var($adminEmail, FILTER_VALIDATE_EMAIL)) {
@@ -186,7 +191,7 @@ function handle_create_event(PDO $pdo, array $config): void
     }
 
     $logoPath = has_uploaded_file('logo') ? save_uploaded_image($_FILES['logo'], 'logos') : null;
-    $accessExpiresAt = compute_access_expires_at($_POST, $fields['event_date'], $planFields['plan'], $config);
+    $accessExpiresAt = compute_access_expires_at($_POST, $fields['event_date'], $planFields['plan']);
 
     $pdo->beginTransaction();
     try {
@@ -198,15 +203,16 @@ function handle_create_event(PDO $pdo, array $config): void
                 venue_name_secondary, address, maps_url, maps_url_secondary, dress_code,
                 invite_message, pix_key, logo_path, color_primary, name_font, invite_style,
                 show_countdown, show_calendar, plan, gifts_enabled, guest_limit, admin_limit,
-                access_expires_at)
+                access_expires_at, price_charged, price_breakdown, coupon_code)
              VALUES
                (:slug, :event_type, :host_name, :host_name_secondary, :subtitle, :event_date, :venue_name,
                 :venue_name_secondary, :address, :maps_url, :maps_url_secondary, :dress_code,
                 :invite_message, :pix_key, :logo_path, :color_primary, :name_font, :invite_style,
                 :show_countdown, :show_calendar, :plan, :gifts_enabled, :guest_limit, :admin_limit,
-                :access_expires_at)'
+                :access_expires_at, :price_charged, :price_breakdown, :coupon_code)'
         );
-        $insert->execute($fields + $planFields + [
+        $insert->execute($fields + $planFields + $quoteFields + [
+            'price_charged' => $priceCharged,
             'slug' => $slug,
             'event_type' => $eventType,
             'logo_path' => $logoPath,
@@ -262,7 +268,7 @@ function handle_update_event(PDO $pdo, array $config, int $id): void
 
     $body = json_body();
     $fields = read_event_branding_fields($body);
-    $sentFields = read_sent_branding_fields($body) + read_sent_plan_fields($body);
+    $sentFields = read_sent_branding_fields($body) + read_sent_plan_fields($body) + read_sent_quote($pdo, $body);
     $eventType = read_event_type($body);
     $plan = $sentFields['plan'] ?? $existing['plan'];
     $accessExpiresAt = $plan === 'unlimited' ? null : optional_datetime($body, 'access_expires_at');
@@ -346,9 +352,9 @@ function handle_delete_event(PDO $pdo, int $id): void
  * (nunca expira, até o super-admin definir a data ou o valor manualmente).
  * O plano Ilimitado é sempre NULL.
  */
-function compute_access_expires_at(array $body, ?string $eventDate, string $plan, array $config): ?string
+function compute_access_expires_at(array $body, ?string $eventDate, string $plan): ?string
 {
-    $graceDays = plan_grace_days($plan, $config);
+    $graceDays = plan_grace_days($plan);
     if ($graceDays === null) {
         return null;
     }
@@ -445,6 +451,9 @@ function format_super_event(array $event): array
             'admin_limit' => $event['admin_limit'] !== null ? (int) $event['admin_limit'] : null,
         ],
         'price_charged' => $event['price_charged'] !== null ? (float) $event['price_charged'] : null,
+        // orçamento aplicado na venda (read_sent_quote), como estava no dia
+        'price_breakdown' => $event['price_breakdown'] !== null ? json_decode($event['price_breakdown'], true) : null,
+        'coupon_code' => $event['coupon_code'],
         'last_payment_at' => $event['last_payment_at'],
         'payment_notes' => $event['payment_notes'],
         'created_at' => $event['created_at'],

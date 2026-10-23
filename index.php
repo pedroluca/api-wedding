@@ -12,6 +12,7 @@ require __DIR__ . '/src/Database.php';
 require __DIR__ . '/src/Uploads.php';
 require __DIR__ . '/src/Mailer.php';
 require __DIR__ . '/src/Plans.php';
+require __DIR__ . '/src/Pricing.php';
 require __DIR__ . '/handlers/public_events.php';
 require __DIR__ . '/handlers/public_guests.php';
 require __DIR__ . '/handlers/public_gifts.php';
@@ -23,11 +24,12 @@ require __DIR__ . '/handlers/admin_gifts.php';
 require __DIR__ . '/handlers/super_events.php';
 require __DIR__ . '/handlers/super_admins.php';
 require __DIR__ . '/handlers/gift_templates.php';
+require __DIR__ . '/handlers/pricing.php';
+require __DIR__ . '/handlers/coupons.php';
 
 $config = require __DIR__ . '/config.php';
 
 define('ASSETS_FALLBACK_URL', rtrim((string) ($config['app']['assets_fallback_url'] ?? ''), '/'));
-define('GUEST_TOLERANCE_PERCENT', (int) ($config['limits']['guest_tolerance_percent'] ?? 20));
 
 // CORS: front e api vivem em subdomínios diferentes, então liberamos
 // explicitamente as origens configuradas (sem uso de cookies).
@@ -50,6 +52,8 @@ try {
 } catch (Throwable $e) {
     json_error(500, 'Falha ao conectar ao banco de dados.');
 }
+
+load_app_settings($pdo, $config);
 
 $method = $_SERVER['REQUEST_METHOD'];
 $path = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH) ?? '/';
@@ -78,6 +82,15 @@ if ($method === 'GET' && preg_match('#^/events/([a-z0-9-]+)/guests/([a-z0-9-]+)/
 
 if ($method === 'POST' && preg_match('#^/events/([a-z0-9-]+)/guests/([a-z0-9-]+)/gifts/(\d+)/claim$#', $path, $m)) {
     handle_claim_gift($pdo, $m[1], $m[2], (int) $m[3]);
+}
+
+// --- preços (públicos: simulador da home e calculadora do super-admin) -----
+if ($method === 'GET' && $path === '/pricing') {
+    handle_get_pricing($pdo);
+}
+
+if ($method === 'POST' && $path === '/pricing/quote') {
+    handle_quote($pdo);
 }
 
 // --- autenticação e recuperação de senha admin ---------------------------
@@ -243,6 +256,32 @@ if ($method === 'POST' && preg_match('#^/admin/super/gift-templates/(\d+)$#', $p
 if ($method === 'DELETE' && preg_match('#^/admin/super/gift-templates/(\d+)$#', $path, $m)) {
     require_super_admin($pdo);
     handle_delete_gift_template($pdo, (int) $m[1]);
+}
+
+// --- super-admin: preços, planos e cupons ------------------------------------
+if ($method === 'PUT' && $path === '/admin/super/pricing') {
+    require_super_admin($pdo);
+    handle_update_pricing($pdo, $config);
+}
+
+if ($method === 'GET' && $path === '/admin/super/coupons') {
+    require_super_admin($pdo);
+    handle_list_coupons($pdo);
+}
+
+if ($method === 'POST' && $path === '/admin/super/coupons') {
+    require_super_admin($pdo);
+    handle_create_coupon($pdo);
+}
+
+if ($method === 'PUT' && preg_match('#^/admin/super/coupons/(\d+)$#', $path, $m)) {
+    require_super_admin($pdo);
+    handle_update_coupon($pdo, (int) $m[1]);
+}
+
+if ($method === 'DELETE' && preg_match('#^/admin/super/coupons/(\d+)$#', $path, $m)) {
+    require_super_admin($pdo);
+    handle_delete_coupon($pdo, (int) $m[1]);
 }
 
 // --- admin de evento: prévia e clone dos modelos de presente -----------------
