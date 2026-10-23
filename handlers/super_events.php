@@ -11,8 +11,8 @@ function handle_list_events(PDO $pdo): void
         'SELECT id, slug, event_type, host_name, host_name_secondary, subtitle, event_date,
                 venue_name, venue_name_secondary, address, maps_url, maps_url_secondary, dress_code,
                 invite_message, share_message, pix_key, logo_path, cover_photo_path, music_path,
-                color_primary, name_font, invite_style, access_expires_at, price_charged,
-                last_payment_at, payment_notes, created_at
+                color_primary, name_font, invite_style, show_countdown, show_calendar,
+                access_expires_at, price_charged, last_payment_at, payment_notes, created_at
          FROM events
          ORDER BY created_at DESC'
     );
@@ -46,6 +46,8 @@ function handle_create_event(PDO $pdo, array $config): void
     $fields = read_event_branding_fields($_POST) + read_sent_branding_fields($_POST) + [
         'subtitle' => null,
         'invite_style' => default_invite_style($eventType),
+        'show_countdown' => 1,
+        'show_calendar' => 1,
     ];
 
     $adminName = require_string($_POST, 'admin_name', 150);
@@ -72,12 +74,12 @@ function handle_create_event(PDO $pdo, array $config): void
                (slug, event_type, host_name, host_name_secondary, subtitle, event_date, venue_name,
                 venue_name_secondary, address, maps_url, maps_url_secondary, dress_code,
                 invite_message, pix_key, logo_path, color_primary, name_font, invite_style,
-                access_expires_at)
+                show_countdown, show_calendar, access_expires_at)
              VALUES
                (:slug, :event_type, :host_name, :host_name_secondary, :subtitle, :event_date, :venue_name,
                 :venue_name_secondary, :address, :maps_url, :maps_url_secondary, :dress_code,
                 :invite_message, :pix_key, :logo_path, :color_primary, :name_font, :invite_style,
-                :access_expires_at)'
+                :show_countdown, :show_calendar, :access_expires_at)'
         );
         $insert->execute($fields + [
             'slug' => $slug,

@@ -47,6 +47,9 @@ CREATE TABLE IF NOT EXISTS events (
   -- com aba), 'doors'/'vertical' (abertura central, para os lados ou para
   -- cima e para baixo). Escolhida pelo admin do evento nas configurações.
   invite_style          ENUM('direct','letter','doors','vertical') NOT NULL DEFAULT 'letter',
+  -- seções opcionais do convite (contagem regressiva, "Salve a data").
+  show_countdown        TINYINT(1) NOT NULL DEFAULT 1,
+  show_calendar         TINYINT(1) NOT NULL DEFAULT 1,
 
   -- ciclo de acesso do admin do evento. NULL = nunca expira. Quando
   -- event_date é definida, o padrão é event_date + config('access.grace_days')

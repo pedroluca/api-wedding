@@ -103,8 +103,8 @@ function fetch_event_row(PDO $pdo, int $eventId): ?array
         'SELECT id, slug, event_type, host_name, host_name_secondary, subtitle, event_date,
                 venue_name, venue_name_secondary, address, maps_url, maps_url_secondary, dress_code,
                 invite_message, share_message, pix_key, logo_path, cover_photo_path, music_path,
-                color_primary, name_font, invite_style, access_expires_at, price_charged,
-                last_payment_at, payment_notes, created_at
+                color_primary, name_font, invite_style, show_countdown, show_calendar,
+                access_expires_at, price_charged, last_payment_at, payment_notes, created_at
          FROM events
          WHERE id = :id'
     );
@@ -197,8 +197,19 @@ function read_sent_branding_fields(array $body): array
     if (array_key_exists('invite_style', $body)) {
         $fields['invite_style'] = read_invite_style($body);
     }
+    foreach (['show_countdown', 'show_calendar'] as $flag) {
+        if (array_key_exists($flag, $body)) {
+            $fields[$flag] = read_flag($body, $flag);
+        }
+    }
 
     return $fields;
+}
+
+/** Liga/desliga: "1"/"0" no multipart, true/false no JSON. */
+function read_flag(array $body, string $key): int
+{
+    return filter_var($body[$key], FILTER_VALIDATE_BOOLEAN) ? 1 : 0;
 }
 
 const INVITE_STYLES = ['direct', 'letter', 'doors', 'vertical'];
