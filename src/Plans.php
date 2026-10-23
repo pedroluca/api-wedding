@@ -89,11 +89,12 @@ function require_guest_room(PDO $pdo, int $eventId): void
  */
 function plan_grace_days(string $plan): ?int
 {
-    return match ($plan) {
-        'unlimited' => null,
-        'premium' => app_setting('grace_days_premium'),
-        default => app_setting('grace_days_standard'),
-    };
+    // if em vez de match: o resto da API roda em PHP 7.4, e isto não deve exigir 8.
+    if ($plan === 'unlimited') {
+        return null;
+    }
+
+    return app_setting($plan === 'premium' ? 'grace_days_premium' : 'grace_days_standard');
 }
 
 function read_plan(array $body): string

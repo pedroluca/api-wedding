@@ -202,8 +202,12 @@ function handle_update_pricing(PDO $pdo, array $config): void
     json_response(200, pricing_payload($pdo));
 }
 
-/** Valor em reais, de 0 a 1 milhão. */
-function read_money(mixed $value, string $label): float
+/**
+ * Valor em reais, de 0 a 1 milhão.
+ *
+ * @param mixed $value número ou texto (sem o tipo mixed na assinatura, que só existe no PHP 8)
+ */
+function read_money($value, string $label): float
 {
     $amount = filter_var(is_string($value) ? trim($value) : $value, FILTER_VALIDATE_FLOAT);
     if ($amount === false || $amount < 0 || $amount > 1000000) {
