@@ -315,6 +315,8 @@ CREATE TABLE IF NOT EXISTS orders (
   mp_preference_id    VARCHAR(64) NULL,
   checkout_url        VARCHAR(500) NULL,
   mp_payment_id       VARCHAR(32) NULL,
+  -- última conferência no MP pela external_reference (limita a uma a cada 30 s)
+  mp_checked_at       DATETIME NULL,
   payment_method      VARCHAR(30) NULL,
   installments        TINYINT UNSIGNED NULL,
   paid_amount         DECIMAL(10,2) NULL,
