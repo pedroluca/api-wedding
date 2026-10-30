@@ -59,7 +59,9 @@ function handle_list_available_gifts(PDO $pdo, string $eventSlug, string $guestS
         ];
     }
 
-    record_gifts_view($pdo, (int) $titular['id']);
+    if (!is_demo_event($event)) {
+        record_gifts_view($pdo, (int) $titular['id']);
+    }
 
     json_response(200, ['gifts' => $result]);
 }
@@ -111,6 +113,18 @@ function handle_claim_gift(PDO $pdo, string $eventSlug, string $guestSlug, int $
     $message = trim((string) ($body['message'] ?? ''));
     if ($message !== '' && mb_strlen($message) > 500) {
         json_error(422, 'Mensagem muito longa.');
+    }
+
+    // Exemplo da home: confere o presente e responde como se tivesse gravado
+    // (is_demo_event), sem tirar o item da lista de quem vier depois.
+    if (is_demo_event($event)) {
+        $gift = $pdo->prepare('SELECT id FROM gifts WHERE id = :id AND event_id = :event_id');
+        $gift->execute(['id' => $giftId, 'event_id' => $event['id']]);
+        if (!$gift->fetch()) {
+            json_error(404, 'Presente não encontrado.');
+        }
+
+        json_response(201, ['ok' => true]);
     }
 
     $pdo->beginTransaction();

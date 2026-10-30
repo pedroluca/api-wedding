@@ -10,9 +10,9 @@ function handle_list_events(PDO $pdo): void
     $stmt = $pdo->query(
         'SELECT id, slug, event_type, host_name, host_name_secondary, subtitle, event_date,
                 venue_name, venue_name_secondary, address, maps_url, maps_url_secondary, dress_code,
-                invite_message, share_message, pix_key, logo_path, cover_photo_path, music_path,
-                color_primary, name_font, invite_style, show_countdown, show_calendar,
-                plan, gifts_enabled, guest_limit, admin_limit,
+                invite_message, share_message, pix_key, logo_path, cover_photo_path, cover_focus_x,
+                cover_focus_y, music_path, color_primary, name_font, invite_style, show_countdown,
+                show_calendar, plan, gifts_enabled, guest_limit, admin_limit, is_demo,
                 access_expires_at, price_charged, coupon_code, price_breakdown, last_payment_at,
                 payment_notes, created_at
          FROM events
@@ -268,7 +268,8 @@ function handle_update_event(PDO $pdo, array $config, int $id): void
 
     $body = json_body();
     $fields = read_event_branding_fields($body);
-    $sentFields = read_sent_branding_fields($body) + read_sent_plan_fields($body) + read_sent_quote($pdo, $body);
+    $sentFields = read_sent_branding_fields($body) + read_sent_plan_fields($body) + read_sent_quote($pdo, $body)
+        + read_sent_demo_field($body);
     $eventType = read_event_type($body);
     $plan = $sentFields['plan'] ?? $existing['plan'];
     $accessExpiresAt = $plan === 'unlimited' ? null : optional_datetime($body, 'access_expires_at');
@@ -376,6 +377,15 @@ function compute_access_expires_at(array $body, ?string $eventDate, string $plan
     $timestamp = strtotime($eventDate . " +{$graceDays} days");
 
     return $timestamp !== false ? date('Y-m-d H:i:s', $timestamp) : null;
+}
+
+/**
+ * Liga/desliga o evento de exemplo da home (events.is_demo), só quando a
+ * chave vem no corpo: uma tela que não conhece o campo não o apaga.
+ */
+function read_sent_demo_field(array $body): array
+{
+    return array_key_exists('is_demo', $body) ? ['is_demo' => read_flag($body, 'is_demo')] : [];
 }
 
 function read_event_type(array $body): string

@@ -84,6 +84,11 @@ if ($method === 'POST' && preg_match('#^/events/([a-z0-9-]+)/guests/([a-z0-9-]+)
     handle_claim_gift($pdo, $m[1], $m[2], (int) $m[3]);
 }
 
+// --- vitrine da home (eventos de exemplo) -----------------------------------
+if ($method === 'GET' && $path === '/demos') {
+    handle_list_demos($pdo);
+}
+
 // --- preços (públicos: simulador da home e calculadora do super-admin) -----
 if ($method === 'GET' && $path === '/pricing') {
     handle_get_pricing($pdo);

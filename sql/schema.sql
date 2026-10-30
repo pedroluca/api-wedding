@@ -38,6 +38,10 @@ CREATE TABLE IF NOT EXISTS events (
   -- foto do casal (capa do convite) e música tocada ao abrir o envelope,
   -- no mesmo formato de logo_path ("uploads/...").
   cover_photo_path      VARCHAR(255) NULL,
+  -- ponto de foco da capa, em % da foto (50/50 = centro): o convite recorta
+  -- em volta dele.
+  cover_focus_x         TINYINT UNSIGNED NOT NULL DEFAULT 50,
+  cover_focus_y         TINYINT UNSIGNED NOT NULL DEFAULT 50,
   music_path            VARCHAR(255) NULL,
   color_primary        CHAR(7) NOT NULL DEFAULT '#d2afff',
   -- fonte usada no nome dos noivos/aniversariante na página do convite:
@@ -62,6 +66,9 @@ CREATE TABLE IF NOT EXISTS events (
   -- NULL = sem limite.
   guest_limit           INT UNSIGNED NULL,
   admin_limit           INT UNSIGNED NULL,
+  -- evento de exemplo da página inicial (GET /demos): o convite aceita
+  -- confirmar e escolher presente sem gravar nada.
+  is_demo               TINYINT(1) NOT NULL DEFAULT 0,
 
   -- ciclo de acesso do admin do evento. NULL = nunca expira. Quando
   -- event_date é definida, o padrão é event_date + o prazo do plano
