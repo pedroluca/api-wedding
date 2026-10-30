@@ -52,6 +52,11 @@ function handle_update_own_event(PDO $pdo, int $eventId): void
     } elseif (($_POST['remove_cover_photo'] ?? '') === '1') {
         $coverPhotoPath = null;
     }
+    // Foto nova sem ponto de foco junto (tela anterior ao campo): o foco da
+    // foto antiga não vale pra ela, volta pro centro.
+    if ($coverPhotoPath !== $existing['cover_photo_path'] && !array_key_exists('cover_focus_x', $sentFields)) {
+        $sentFields += ['cover_focus_x' => 50, 'cover_focus_y' => 50];
+    }
 
     $musicPath = $existing['music_path'];
     if (has_uploaded_file('music')) {
@@ -102,9 +107,9 @@ function fetch_event_row(PDO $pdo, int $eventId): ?array
     $stmt = $pdo->prepare(
         'SELECT id, slug, event_type, host_name, host_name_secondary, subtitle, event_date,
                 venue_name, venue_name_secondary, address, maps_url, maps_url_secondary, dress_code,
-                invite_message, share_message, pix_key, logo_path, cover_photo_path, music_path,
-                color_primary, name_font, invite_style, show_countdown, show_calendar,
-                plan, gifts_enabled, guest_limit, admin_limit,
+                invite_message, share_message, pix_key, logo_path, cover_photo_path, cover_focus_x,
+                cover_focus_y, music_path, color_primary, name_font, invite_style, show_countdown,
+                show_calendar, plan, gifts_enabled, guest_limit, admin_limit, is_demo,
                 access_expires_at, price_charged, coupon_code, price_breakdown, last_payment_at,
                 payment_notes, created_at
          FROM events
@@ -216,8 +221,24 @@ function read_sent_branding_fields(array $body): array
             $fields[$flag] = read_flag($body, $flag);
         }
     }
+    foreach (['cover_focus_x', 'cover_focus_y'] as $axis) {
+        if (array_key_exists($axis, $body)) {
+            $fields[$axis] = read_percent($body, $axis);
+        }
+    }
 
     return $fields;
+}
+
+/** Ponto de foco da capa: inteiro de 0 a 100 (% da foto). */
+function read_percent(array $body, string $key): int
+{
+    $value = filter_var($body[$key], FILTER_VALIDATE_INT, ['options' => ['min_range' => 0, 'max_range' => 100]]);
+    if ($value === false) {
+        json_error(422, "Valor inválido: {$key}.");
+    }
+
+    return $value;
 }
 
 /** Liga/desliga: "1"/"0" no multipart, true/false no JSON. */

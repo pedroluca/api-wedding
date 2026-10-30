@@ -67,6 +67,23 @@ function handle_confirm_guest(PDO $pdo, string $eventSlug, string $guestSlug): v
         $updates[$id] = (bool) $item['confirmed'];
     }
 
+    // Exemplo da home: devolve o grupo como ficaria, sem gravar (is_demo_event).
+    if (is_demo_event($event)) {
+        json_response(200, [
+            'titular' => $titular,
+            'members' => array_map(
+                static function (array $member) use ($updates): array {
+                    if (array_key_exists($member['id'], $updates)) {
+                        $member['status'] = $updates[$member['id']] ? 'confirmado' : 'recusado';
+                    }
+
+                    return $member;
+                },
+                fetch_guest_group($pdo, (int) $titular['id'])
+            ),
+        ]);
+    }
+
     $pdo->beginTransaction();
     try {
         $update = $pdo->prepare(
