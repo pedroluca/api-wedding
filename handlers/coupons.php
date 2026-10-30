@@ -8,7 +8,7 @@ declare(strict_types=1);
  * O COLLATE explícito deixa a comparação valer mesmo que events e coupons
  * tenham collations diferentes (sem ele: "Illegal mix of collations").
  */
-const COUPON_COLUMNS = 'id, code, discount_type, discount_value, valid_until, active, notes, created_at,
+const COUPON_COLUMNS = 'id, code, discount_type, discount_value, valid_until, max_uses, active, notes, created_at,
     (SELECT COUNT(*) FROM events WHERE events.coupon_code = coupons.code COLLATE utf8mb4_general_ci) AS uses';
 
 /**
@@ -28,7 +28,7 @@ function handle_list_coupons(PDO $pdo): void
 
 /**
  * POST /admin/super/coupons
- * Body: { code, discount_type: "percent"|"amount", discount_value, valid_until?, active?, notes? }
+ * Body: { code, discount_type: "percent"|"amount", discount_value, valid_until?, max_uses?, active?, notes? }
  */
 function handle_create_coupon(PDO $pdo): void
 {
@@ -36,8 +36,8 @@ function handle_create_coupon(PDO $pdo): void
     ensure_coupon_code_free($pdo, $fields['code']);
 
     $pdo->prepare(
-        'INSERT INTO coupons (code, discount_type, discount_value, valid_until, active, notes)
-         VALUES (:code, :discount_type, :discount_value, :valid_until, :active, :notes)'
+        'INSERT INTO coupons (code, discount_type, discount_value, valid_until, max_uses, active, notes)
+         VALUES (:code, :discount_type, :discount_value, :valid_until, :max_uses, :active, :notes)'
     )->execute($fields);
 
     json_response(201, ['coupon' => fetch_coupon($pdo, (int) $pdo->lastInsertId())]);
@@ -59,7 +59,7 @@ function handle_update_coupon(PDO $pdo, int $id): void
     $pdo->prepare(
         'UPDATE coupons
          SET code = :code, discount_type = :discount_type, discount_value = :discount_value,
-             valid_until = :valid_until, active = :active, notes = :notes
+             valid_until = :valid_until, max_uses = :max_uses, active = :active, notes = :notes
          WHERE id = :id'
     )->execute($fields + ['id' => $id]);
 
@@ -125,6 +125,8 @@ function read_coupon_fields(array $body): array
         'discount_type' => $type,
         'discount_value' => round($value, 2),
         'valid_until' => optional_date($body, 'valid_until'),
+        // quantos eventos podem ser vendidos com ele; em branco = sem limite
+        'max_uses' => optional_limit($body, 'max_uses'),
         'active' => array_key_exists('active', $body) ? read_flag($body, 'active') : 1,
         'notes' => optional_string($body, 'notes', 255),
     ];

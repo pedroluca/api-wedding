@@ -58,6 +58,9 @@ function read_quote_choice(PDO $pdo, array $body): array
     }
 
     $coupon = trim((string) ($body['coupon'] ?? ''));
+    // Evento cujo orçamento está sendo recalculado (calculadora do super):
+    // não conta contra o limite de usos do próprio cupom.
+    $eventId = filter_var($body['event_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
 
     return [
         'event_type' => read_event_type($body),
@@ -66,6 +69,7 @@ function read_quote_choice(PDO $pdo, array $body): array
         'premium' => filter_var($body['premium'] ?? false, FILTER_VALIDATE_BOOLEAN),
         'extra_admins' => $extraAdmins,
         'coupon' => $coupon !== '' ? $coupon : null,
+        'event_id' => $eventId !== false ? $eventId : null,
     ];
 }
 
@@ -80,7 +84,7 @@ function read_quote_choice(PDO $pdo, array $body): array
  *
  * @return array{price_breakdown?: ?string, coupon_code?: ?string}
  */
-function read_sent_quote(PDO $pdo, array $body): array
+function read_sent_quote(PDO $pdo, array $body, ?int $eventId = null): array
 {
     if (!array_key_exists('quote', $body)) {
         return [];
@@ -97,7 +101,8 @@ function read_sent_quote(PDO $pdo, array $body): array
         json_error(422, 'Orçamento inválido.');
     }
 
-    $parsed = read_quote_choice($pdo, $choice);
+    // O evento salvo é sempre o da URL (na criação, nenhum), nunca o do corpo.
+    $parsed = ['event_id' => $eventId] + read_quote_choice($pdo, $choice);
     $quote = compute_quote($pdo, $parsed);
     $couponCode = $quote['coupon']['code'] ?? null;
 

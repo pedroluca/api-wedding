@@ -261,6 +261,8 @@ CREATE TABLE IF NOT EXISTS coupons (
   discount_type   ENUM('percent','amount') NOT NULL,
   discount_value  DECIMAL(10,2) NOT NULL,
   valid_until     DATE NULL,
+  -- limite de usos (eventos vendidos com o cupom). NULL = sem limite.
+  max_uses        INT UNSIGNED NULL,
   active          TINYINT(1) NOT NULL DEFAULT 1,
   notes           VARCHAR(255) NULL,
   created_at      TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
