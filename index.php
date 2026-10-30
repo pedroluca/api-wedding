@@ -14,6 +14,7 @@ require __DIR__ . '/src/Uploads.php';
 require __DIR__ . '/src/Mailer.php';
 require __DIR__ . '/src/Plans.php';
 require __DIR__ . '/src/Pricing.php';
+require __DIR__ . '/src/MercadoPago.php';
 require __DIR__ . '/handlers/public_events.php';
 require __DIR__ . '/handlers/public_guests.php';
 require __DIR__ . '/handlers/public_gifts.php';
@@ -27,6 +28,7 @@ require __DIR__ . '/handlers/super_admins.php';
 require __DIR__ . '/handlers/gift_templates.php';
 require __DIR__ . '/handlers/pricing.php';
 require __DIR__ . '/handlers/coupons.php';
+require __DIR__ . '/handlers/orders.php';
 
 $config = require __DIR__ . '/config.php';
 
@@ -92,11 +94,24 @@ if ($method === 'GET' && $path === '/demos') {
 
 // --- preços (públicos: simulador da home e calculadora do super-admin) -----
 if ($method === 'GET' && $path === '/pricing') {
-    handle_get_pricing($pdo);
+    handle_get_pricing($pdo, $config);
 }
 
 if ($method === 'POST' && $path === '/pricing/quote') {
     handle_quote($pdo);
+}
+
+// --- pedidos pelo site e pagamento (Mercado Pago) ---------------------------
+if ($method === 'POST' && $path === '/orders') {
+    handle_create_order($pdo, $config);
+}
+
+if ($method === 'GET' && preg_match('#^/orders/([a-f0-9]{32})$#', $path, $m)) {
+    handle_get_order($pdo, $config, $m[1]);
+}
+
+if ($method === 'POST' && $path === '/webhooks/mercadopago') {
+    handle_mercadopago_webhook($pdo, $config);
 }
 
 // --- autenticação e recuperação de senha admin ---------------------------

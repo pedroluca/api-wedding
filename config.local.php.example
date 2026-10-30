@@ -27,5 +27,12 @@ return [
     ],
     'app' => [
         'frontend_url' => 'https://presenzo.com.br',
+        'api_url' => 'https://api.presenzo.com.br',
+    ],
+    'mercadopago' => [
+        // Credenciais de produção (Suas integrações → aplicação → Credenciais).
+        'access_token' => 'APP_USR-coloque-o-access-token-aqui',
+        // Suas integrações → aplicação → Webhooks → "Assinatura secreta".
+        'webhook_secret' => 'coloque-a-assinatura-secreta-aqui',
     ],
 ];

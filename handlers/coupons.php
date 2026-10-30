@@ -3,13 +3,17 @@
 declare(strict_types=1);
 
 /**
- * Colunas do cupom no super-admin, com quantos eventos foram vendidos com ele
- * (events.coupon_code). Trocar o código de um cupom zera essa contagem.
- * O COLLATE explícito deixa a comparação valer mesmo que events e coupons
- * tenham collations diferentes (sem ele: "Illegal mix of collations").
+ * Colunas do cupom no super-admin, com quantas vendas usaram ele: eventos
+ * (events.coupon_code) e pedidos pagos pelo site que ainda não viraram
+ * evento (ver coupon_uses em src/Pricing.php). Trocar o código de um cupom
+ * zera essa contagem. O COLLATE explícito deixa a comparação valer mesmo que
+ * events, orders e coupons tenham collations diferentes (sem ele: "Illegal
+ * mix of collations").
  */
-const COUPON_COLUMNS = 'id, code, discount_type, discount_value, valid_until, max_uses, active, notes, created_at,
-    (SELECT COUNT(*) FROM events WHERE events.coupon_code = coupons.code COLLATE utf8mb4_general_ci) AS uses';
+const COUPON_COLUMNS = "id, code, discount_type, discount_value, valid_until, max_uses, active, notes, created_at,
+    (SELECT COUNT(*) FROM events WHERE events.coupon_code = coupons.code COLLATE utf8mb4_general_ci)
+    + (SELECT COUNT(*) FROM orders
+       WHERE orders.coupon_code = coupons.code COLLATE utf8mb4_general_ci AND orders.status = 'paid') AS uses";
 
 /**
  * GET /admin/super/coupons
