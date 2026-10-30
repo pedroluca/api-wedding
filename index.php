@@ -29,6 +29,7 @@ require __DIR__ . '/handlers/gift_templates.php';
 require __DIR__ . '/handlers/pricing.php';
 require __DIR__ . '/handlers/coupons.php';
 require __DIR__ . '/handlers/orders.php';
+require __DIR__ . '/handlers/super_orders.php';
 
 $config = require __DIR__ . '/config.php';
 
@@ -236,6 +237,27 @@ if ($method === 'DELETE' && preg_match('#^/admin/super/events/(\d+)$#', $path, $
 }
 
 // --- super-admin: admins de um evento ----------------------------------------
+// --- pedidos feitos pelo site (super-admin) ---------------------------------
+if ($method === 'GET' && $path === '/admin/super/orders') {
+    require_super_admin($pdo);
+    handle_list_orders($pdo);
+}
+
+if ($method === 'GET' && preg_match('#^/admin/super/orders/(\d+)$#', $path, $m)) {
+    require_super_admin($pdo);
+    handle_get_super_order($pdo, (int) $m[1]);
+}
+
+if ($method === 'PUT' && preg_match('#^/admin/super/orders/(\d+)$#', $path, $m)) {
+    require_super_admin($pdo);
+    handle_update_super_order($pdo, (int) $m[1]);
+}
+
+if ($method === 'POST' && preg_match('#^/admin/super/orders/(\d+)/check$#', $path, $m)) {
+    require_super_admin($pdo);
+    handle_check_super_order($pdo, $config, (int) $m[1]);
+}
+
 if ($method === 'GET' && preg_match('#^/admin/super/events/(\d+)/admins$#', $path, $m)) {
     require_super_admin($pdo);
     handle_list_event_admins($pdo, (int) $m[1]);

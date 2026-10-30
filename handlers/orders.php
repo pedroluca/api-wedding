@@ -144,10 +144,75 @@ function handle_get_order(PDO $pdo, array $config, string $publicId): void
         if ($status === 200) {
             apply_payment_to_order($pdo, $config, $payment, 'return');
         }
+    } elseif ($order['status'] === 'pending' && mp_enabled($config) && claim_mp_check($pdo, (int) $order['id'])) {
+        // Sem payment_id (a página consultando enquanto aguarda): confere no
+        // MP pelo número do pedido, no máximo a cada 30 s. Cobre o aviso
+        // perdido com a aba do MP fechada antes da volta.
+        reconcile_order_with_mp($pdo, $config, $order, 'check', false);
     }
 
     expire_due_orders($pdo);
     json_response(200, ['order' => format_public_order(fetch_order($pdo, $publicId))]);
+}
+
+/**
+ * Reserva a próxima conferência automática do pedido no MP: só uma a cada
+ * 30 s, para a página do pedido (que consulta a cada 5 s) não virar uma
+ * consulta ao MP a cada 5 s. O UPDATE é atômico: duas abas abertas não
+ * conferem juntas.
+ */
+function claim_mp_check(PDO $pdo, int $orderId): bool
+{
+    $stmt = $pdo->prepare(
+        'UPDATE orders SET mp_checked_at = NOW()
+         WHERE id = :id AND (mp_checked_at IS NULL OR mp_checked_at <= DATE_SUB(NOW(), INTERVAL 30 SECOND))'
+    );
+    $stmt->execute(['id' => $orderId]);
+
+    return $stmt->rowCount() === 1;
+}
+
+/**
+ * Procura no MP os pagamentos do pedido (pela external_reference = public_id)
+ * e aplica o que importa, como se o aviso tivesse chegado: o pagamento já
+ * gravado no pedido (para pegar um estorno), senão o aprovado, senão o mais
+ * recente. É a rede de segurança do webhook: aviso perdido + aba do MP
+ * fechada antes da volta deixariam um pedido pago parado em "aguardando".
+ *
+ * @return int quantos pagamentos o MP tem para o pedido; -1 se a consulta falhou
+ */
+function reconcile_order_with_mp(PDO $pdo, array $config, array $order, string $source, bool $logIgnored = true): int
+{
+    [$status, $data] = mp_request($config, 'GET', '/v1/payments/search?' . http_build_query([
+        'external_reference' => $order['public_id'],
+        'sort' => 'date_created',
+        'criteria' => 'desc',
+    ]));
+    if ($status !== 200) {
+        return -1;
+    }
+
+    $payments = array_values(array_filter($data['results'] ?? [], 'is_array'));
+    if ($payments === []) {
+        return 0;
+    }
+
+    $chosen = null;
+    foreach ($payments as $payment) {
+        if ($order['mp_payment_id'] !== null && (string) ($payment['id'] ?? '') === $order['mp_payment_id']) {
+            $chosen = $payment;
+        }
+    }
+    if ($chosen === null) {
+        foreach ($payments as $payment) {
+            if ($chosen === null && ($payment['status'] ?? '') === 'approved') {
+                $chosen = $payment;
+            }
+        }
+    }
+    apply_payment_to_order($pdo, $config, $chosen ?? $payments[0], $source, [], $logIgnored);
+
+    return count($payments);
 }
 
 /**
@@ -214,10 +279,19 @@ function handle_mercadopago_webhook(PDO $pdo, array $config): void
  * - o resto (pendente, em análise, recusado): só registra. Recusado deixa o
  *   pedido pendente, e a pessoa pode tentar de novo na mesma página do MP.
  *
+ * $logIgnored = false não grava no diário o que não mudou nada (a
+ * conferência automática da página do pedido, que roda de 30 em 30 s).
+ *
  * @return string o que aconteceu (outcome do diário)
  */
-function apply_payment_to_order(PDO $pdo, array $config, array $payment, string $source, array $notification = []): string
-{
+function apply_payment_to_order(
+    PDO $pdo,
+    array $config,
+    array $payment,
+    string $source,
+    array $notification = [],
+    bool $logIgnored = true
+): string {
     $paymentId = (string) ($payment['id'] ?? '');
     $mpStatus = (string) ($payment['status'] ?? '');
     $publicId = (string) ($payment['external_reference'] ?? '');
@@ -236,6 +310,10 @@ function apply_payment_to_order(PDO $pdo, array $config, array $payment, string 
         $outcome = $stmt->rowCount() === 1 ? 'refunded' : 'ignored';
     } else {
         $outcome = 'ignored';
+    }
+
+    if ($outcome === 'ignored' && !$logIgnored) {
+        return $outcome;
     }
 
     log_payment_notification($pdo, $order ? (int) $order['id'] : null, $paymentId, $mpStatus, $outcome, [

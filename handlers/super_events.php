@@ -156,6 +156,11 @@ function empty_event_stats(): array
  * slug gerado a partir dos nomes), o primeiro admin (senha inutilizável) e
  * dispara o email de convite. Se o email já tem conta, o evento só entra na
  * lista dela e o email avisa do evento novo (sem senha nova).
+ *
+ * order_id (opcional): o evento nasce de um pedido pago pelo site. O que foi
+ * vendido vem do pedido, não do formulário: orçamento, cupom, valor cobrado
+ * (o pago) e a data do pagamento (entra no "Recebido no mês"). Na mesma
+ * transação o pedido vira event_created; pedido que não está pago → 409.
  */
 function handle_create_event(PDO $pdo, array $config): void
 {
@@ -187,11 +192,41 @@ function handle_create_event(PDO $pdo, array $config): void
         json_error(409, 'Este email é de um super-admin. Use outro email para o admin do evento.');
     }
 
+    $orderId = filter_var($_POST['order_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+    $orderId = $orderId !== false ? $orderId : null;
+    $order = null;
+    $lastPaymentAt = null;
+    $paymentNotes = null;
+
     $logoPath = has_uploaded_file('logo') ? save_uploaded_image($_FILES['logo'], 'logos') : null;
     $accessExpiresAt = compute_access_expires_at($_POST, $fields['event_date'], $planFields['plan']);
 
     $pdo->beginTransaction();
     try {
+        if ($orderId !== null) {
+            // FOR UPDATE: dois cliques em "Criar evento" não criam dois eventos.
+            $orderStmt = $pdo->prepare(
+                'SELECT id, status, price_breakdown, coupon_code, paid_amount, paid_at, mp_payment_id,
+                        payment_method, installments
+                 FROM orders WHERE id = :id FOR UPDATE'
+            );
+            $orderStmt->execute(['id' => $orderId]);
+            $order = $orderStmt->fetch() ?: null;
+            if (!$order || $order['status'] !== 'paid') {
+                $pdo->rollBack();
+                json_error(409, 'Este pedido não está pago ou já virou evento.');
+            }
+            $quoteFields = ['price_breakdown' => $order['price_breakdown'], 'coupon_code' => $order['coupon_code']];
+            $priceCharged = (float) $order['paid_amount'];
+            $lastPaymentAt = substr((string) $order['paid_at'], 0, 10);
+            $method = order_payment_label([
+                'payment_method_id' => $order['payment_method'] === 'pix' ? 'pix' : '',
+                'payment_type_id' => $order['payment_method'],
+                'installments' => $order['installments'],
+            ]);
+            $paymentNotes = "Pago pelo site: {$method}, Mercado Pago {$order['mp_payment_id']}.";
+        }
+
         $slug = generate_event_slug($pdo, $fields['host_name'], $fields['host_name_secondary']);
 
         $insert = $pdo->prepare(
@@ -200,16 +235,18 @@ function handle_create_event(PDO $pdo, array $config): void
                 venue_name_secondary, address, maps_url, maps_url_secondary, dress_code,
                 invite_message, pix_key, logo_path, color_primary, name_font, invite_style,
                 show_countdown, show_calendar, plan, gifts_enabled, guest_limit, admin_limit,
-                access_expires_at, price_charged, price_breakdown, coupon_code)
+                access_expires_at, price_charged, price_breakdown, coupon_code, last_payment_at, payment_notes)
              VALUES
                (:slug, :event_type, :host_name, :host_name_secondary, :subtitle, :event_date, :venue_name,
                 :venue_name_secondary, :address, :maps_url, :maps_url_secondary, :dress_code,
                 :invite_message, :pix_key, :logo_path, :color_primary, :name_font, :invite_style,
                 :show_countdown, :show_calendar, :plan, :gifts_enabled, :guest_limit, :admin_limit,
-                :access_expires_at, :price_charged, :price_breakdown, :coupon_code)'
+                :access_expires_at, :price_charged, :price_breakdown, :coupon_code, :last_payment_at, :payment_notes)'
         );
         $insert->execute($fields + $planFields + $quoteFields + [
             'price_charged' => $priceCharged,
+            'last_payment_at' => $lastPaymentAt,
+            'payment_notes' => $paymentNotes,
             'slug' => $slug,
             'event_type' => $eventType,
             'logo_path' => $logoPath,
@@ -222,6 +259,11 @@ function handle_create_event(PDO $pdo, array $config): void
             add_event_membership($pdo, $eventId, $adminId);
         } else {
             $adminId = create_event_admin($pdo, $eventId, $adminName, $adminEmail);
+        }
+
+        if ($order !== null) {
+            $pdo->prepare("UPDATE orders SET status = 'event_created', event_id = :event_id WHERE id = :id AND status = 'paid'")
+                ->execute(['event_id' => $eventId, 'id' => $order['id']]);
         }
 
         $pdo->commit();
