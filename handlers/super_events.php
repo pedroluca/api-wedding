@@ -268,7 +268,7 @@ function handle_update_event(PDO $pdo, array $config, int $id): void
 
     $body = json_body();
     $fields = read_event_branding_fields($body);
-    $sentFields = read_sent_branding_fields($body) + read_sent_plan_fields($body) + read_sent_quote($pdo, $body)
+    $sentFields = read_sent_branding_fields($body) + read_sent_plan_fields($body) + read_sent_quote($pdo, $body, $id)
         + read_sent_demo_field($body);
     $eventType = read_event_type($body);
     $plan = $sentFields['plan'] ?? $existing['plan'];

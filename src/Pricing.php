@@ -119,14 +119,17 @@ function fetch_guest_tiers(PDO $pdo): array
 }
 
 /**
- * Cupom pelo código, se puder ser usado hoje.
+ * Cupom pelo código, se puder ser usado hoje: ativo, dentro da validade e
+ * com usos sobrando. Com limite, o cupom volta com remaining (quantos usos
+ * ainda restam). $exceptEventId: ao recalcular o orçamento de um evento que
+ * já usou o cupom, esse evento não conta contra ele mesmo.
  *
  * @return array{0: ?array, 1: ?string} [cupom, motivo de não valer]
  */
-function find_usable_coupon(PDO $pdo, string $code): array
+function find_usable_coupon(PDO $pdo, string $code, ?int $exceptEventId = null): array
 {
     $stmt = $pdo->prepare(
-        'SELECT id, code, discount_type, discount_value, valid_until, active, notes, created_at
+        'SELECT id, code, discount_type, discount_value, valid_until, max_uses, active, notes, created_at
          FROM coupons WHERE code = :code'
     );
     $stmt->execute(['code' => normalize_coupon_code($code)]);
@@ -138,8 +141,29 @@ function find_usable_coupon(PDO $pdo, string $code): array
     if ($coupon['valid_until'] !== null && $coupon['valid_until'] < date('Y-m-d')) {
         return [null, 'Este cupom venceu em ' . date('d/m/Y', strtotime($coupon['valid_until'])) . '.'];
     }
+    if ($coupon['max_uses'] !== null) {
+        $remaining = (int) $coupon['max_uses'] - coupon_uses($pdo, $coupon['code'], $exceptEventId);
+        if ($remaining <= 0) {
+            return [null, 'Este cupom já esgotou.'];
+        }
+        $coupon['remaining'] = $remaining;
+    }
 
     return [$coupon, null];
+}
+
+/**
+ * Usos do cupom: eventos vendidos com ele (events.coupon_code, gravado quando
+ * o super-admin aplica o orçamento no evento). Pedir pelo WhatsApp não conta.
+ */
+function coupon_uses(PDO $pdo, string $code, ?int $exceptEventId = null): int
+{
+    $stmt = $pdo->prepare(
+        'SELECT COUNT(*) FROM events WHERE coupon_code = :code AND id <> :except_id'
+    );
+    $stmt->execute(['code' => $code, 'except_id' => $exceptEventId ?? 0]);
+
+    return (int) $stmt->fetchColumn();
 }
 
 function normalize_coupon_code(string $code): string
@@ -155,7 +179,7 @@ function normalize_coupon_code(string $code): string
  * Um cupom inválido não quebra o orçamento: não desconta e volta em
  * coupon_error. contract traz o que o evento recebe ao fechar esta venda.
  *
- * @param array{event_type:string,tier:array,gifts:bool,premium:bool,extra_admins:int,coupon:?string} $choice
+ * @param array{event_type:string,tier:array,gifts:bool,premium:bool,extra_admins:int,coupon:?string,event_id:?int} $choice
  */
 function compute_quote(PDO $pdo, array $choice): array
 {
@@ -188,7 +212,7 @@ function compute_quote(PDO $pdo, array $choice): array
     $couponError = null;
 
     if ($choice['coupon'] !== null) {
-        [$coupon, $couponError] = find_usable_coupon($pdo, $choice['coupon']);
+        [$coupon, $couponError] = find_usable_coupon($pdo, $choice['coupon'], $choice['event_id'] ?? null);
     }
     if ($coupon !== null) {
         $value = (float) $coupon['discount_value'];
@@ -230,8 +254,10 @@ function format_coupon(array $coupon): array
         'discount_type' => $coupon['discount_type'],
         'discount_value' => (float) $coupon['discount_value'],
         'valid_until' => $coupon['valid_until'],
+        'max_uses' => $coupon['max_uses'] !== null ? (int) $coupon['max_uses'] : null,
         'active' => (bool) $coupon['active'],
         'notes' => $coupon['notes'],
         'created_at' => $coupon['created_at'],
-    ] + (isset($coupon['uses']) ? ['uses' => (int) $coupon['uses']] : []);
+    ] + (isset($coupon['uses']) ? ['uses' => (int) $coupon['uses']] : [])
+        + (isset($coupon['remaining']) ? ['remaining' => (int) $coupon['remaining']] : []);
 }
