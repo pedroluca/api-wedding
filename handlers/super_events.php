@@ -47,8 +47,9 @@ function handle_get_event_detail(PDO $pdo, int $id): void
 /**
  * POST /admin/super/events/{id}/impersonate
  * "Entrar como admin": abre uma sessão curta no painel do evento, como o
- * primeiro admin dele, marcada com o super-admin que entrou (ver
- * admin_sessions.impersonated_by). Mesmo formato de resposta do login.
+ * primeiro admin dele, já com este evento ativo e marcada com o super-admin
+ * que entrou (ver admin_sessions.impersonated_by). Mesmo formato de
+ * resposta do login.
  */
 function handle_impersonate_event_admin(PDO $pdo, array $superAdmin, int $id): void
 {
@@ -57,7 +58,12 @@ function handle_impersonate_event_admin(PDO $pdo, array $superAdmin, int $id): v
     }
 
     $stmt = $pdo->prepare(
-        'SELECT id, event_id, name, email FROM admin_users WHERE event_id = :event_id ORDER BY created_at ASC, id ASC LIMIT 1'
+        'SELECT au.id, au.name, au.email, au.is_super
+         FROM event_admins ea
+         INNER JOIN admin_users au ON au.id = ea.admin_user_id
+         WHERE ea.event_id = :event_id
+         ORDER BY ea.created_at ASC, au.id ASC
+         LIMIT 1'
     );
     $stmt->execute(['event_id' => $id]);
     $admin = $stmt->fetch();
@@ -67,23 +73,17 @@ function handle_impersonate_event_admin(PDO $pdo, array $superAdmin, int $id): v
 
     $token = generate_token();
     $pdo->prepare(
-        'INSERT INTO admin_sessions (admin_user_id, impersonated_by, token, expires_at)
-         VALUES (:admin_user_id, :impersonated_by, :token, DATE_ADD(NOW(), INTERVAL 2 HOUR))'
+        'INSERT INTO admin_sessions (admin_user_id, event_id, impersonated_by, token, expires_at)
+         VALUES (:admin_user_id, :event_id, :impersonated_by, :token, DATE_ADD(NOW(), INTERVAL 2 HOUR))'
     )->execute([
         'admin_user_id' => $admin['id'],
+        'event_id' => $id,
         'impersonated_by' => $superAdmin['id'],
         'token' => $token,
     ]);
 
-    json_response(200, [
-        'token' => $token,
-        'admin' => [
-            'id' => (int) $admin['id'],
-            'event_id' => (int) $admin['event_id'],
-            'name' => $admin['name'],
-            'email' => $admin['email'],
-        ],
-    ]);
+    $events = fetch_account_events($pdo, (int) $admin['id']);
+    json_response(200, ['token' => $token] + account_session_payload($admin, $id, $events));
 }
 
 /**
@@ -121,12 +121,9 @@ function fetch_event_stats(PDO $pdo, ?int $eventId = null): array
         ] + empty_event_stats();
     }
 
-    $admins = $pdo->prepare("SELECT event_id, COUNT(*) AS n FROM admin_users {$where} GROUP BY event_id");
+    $admins = $pdo->prepare("SELECT event_id, COUNT(*) AS n FROM event_admins {$where} GROUP BY event_id");
     $admins->execute($params);
     foreach ($admins->fetchAll() as $row) {
-        if ($row['event_id'] === null) {
-            continue;
-        }
         $stats[(int) $row['event_id']] = ['admins' => (int) $row['n']] + ($stats[(int) $row['event_id']] ?? empty_event_stats());
     }
 
@@ -157,7 +154,8 @@ function empty_event_stats(): array
  * (quote, ver read_sent_quote) e valor cobrado, logo opcional, e
  * admin_name/admin_email do primeiro admin do evento. Cria o evento (com
  * slug gerado a partir dos nomes), o primeiro admin (senha inutilizável) e
- * dispara o email de convite.
+ * dispara o email de convite. Se o email já tem conta, o evento só entra na
+ * lista dela e o email avisa do evento novo (sem senha nova).
  */
 function handle_create_event(PDO $pdo, array $config): void
 {
@@ -184,10 +182,9 @@ function handle_create_event(PDO $pdo, array $config): void
         json_error(422, 'Informe um email válido para o admin do evento.');
     }
 
-    $emailTaken = $pdo->prepare('SELECT id FROM admin_users WHERE email = :email');
-    $emailTaken->execute(['email' => $adminEmail]);
-    if ($emailTaken->fetch()) {
-        json_error(409, 'Já existe um admin cadastrado com este email.');
+    $existingAccount = find_account_by_email($pdo, $adminEmail);
+    if ($existingAccount && $existingAccount['is_super']) {
+        json_error(409, 'Este email é de um super-admin. Use outro email para o admin do evento.');
     }
 
     $logoPath = has_uploaded_file('logo') ? save_uploaded_image($_FILES['logo'], 'logos') : null;
@@ -220,7 +217,12 @@ function handle_create_event(PDO $pdo, array $config): void
         ]);
         $eventId = (int) $pdo->lastInsertId();
 
-        $adminId = create_event_admin($pdo, $eventId, $adminName, $adminEmail);
+        if ($existingAccount) {
+            $adminId = (int) $existingAccount['id'];
+            add_event_membership($pdo, $eventId, $adminId);
+        } else {
+            $adminId = create_event_admin($pdo, $eventId, $adminName, $adminEmail);
+        }
 
         $pdo->commit();
     } catch (Throwable $e) {
@@ -238,7 +240,11 @@ function handle_create_event(PDO $pdo, array $config): void
         $fields['host_name_secondary'],
         $fields['subtitle']
     );
-    issue_and_send_password_token($pdo, $config, $adminId, $adminName, $adminEmail, 'invite', $eventLabel);
+    if ($existingAccount) {
+        send_event_access_email($config, $existingAccount['name'], $existingAccount['email'], $eventLabel);
+    } else {
+        issue_and_send_password_token($pdo, $config, $adminId, $adminName, $adminEmail, 'invite', $eventLabel);
+    }
 
     json_response(201, ['event' => format_super_event(fetch_event_row($pdo, $eventId))]);
 }
@@ -303,11 +309,15 @@ function handle_update_event(PDO $pdo, array $config, int $id): void
 /**
  * DELETE /admin/super/events/{id}
  * Remove o evento e tudo que depende dele — convidados, presentes (e seus
- * presenteios, em cascata), admins do evento (e as sessões/tokens deles, em
- * cascata) — de forma irreversível. guests/gifts são apagados explicitamente
- * aqui porque a FK deles pra events é ON DELETE RESTRICT de propósito (evita
- * apagar esse conteúdo sem querer em qualquer outro fluxo); admin_users usa
- * ON DELETE CASCADE, então basta remover o evento por último.
+ * presenteios, em cascata), a ligação dos admins com ele e as contas que
+ * ficarem sem nenhum evento (com sessões/tokens, em cascata) — de forma
+ * irreversível. Quem administra outros eventos continua com eles.
+ * guests/gifts são apagados explicitamente aqui porque a FK deles pra
+ * events é ON DELETE RESTRICT de propósito (evita apagar esse conteúdo sem
+ * querer em qualquer outro fluxo). As ligações saem antes do evento para
+ * settle_account_events() tirar o admin_users.event_id das contas deste
+ * evento: a FK dele é ON DELETE CASCADE e levaria junto uma conta que tem
+ * outros eventos.
  */
 function handle_delete_event(PDO $pdo, int $id): void
 {
@@ -322,10 +332,18 @@ function handle_delete_event(PDO $pdo, int $id): void
     $giftImagesStmt->execute(['event_id' => $id]);
     $giftImages = $giftImagesStmt->fetchAll(PDO::FETCH_COLUMN);
 
+    $membersStmt = $pdo->prepare('SELECT admin_user_id FROM event_admins WHERE event_id = :event_id');
+    $membersStmt->execute(['event_id' => $id]);
+    $memberIds = array_map('intval', $membersStmt->fetchAll(PDO::FETCH_COLUMN));
+
     $pdo->beginTransaction();
     try {
         $pdo->prepare('DELETE FROM gifts WHERE event_id = :event_id')->execute(['event_id' => $id]);
         $pdo->prepare('DELETE FROM guests WHERE event_id = :event_id')->execute(['event_id' => $id]);
+        $pdo->prepare('DELETE FROM event_admins WHERE event_id = :event_id')->execute(['event_id' => $id]);
+        foreach ($memberIds as $memberId) {
+            settle_account_events($pdo, $memberId);
+        }
         $pdo->prepare('DELETE FROM events WHERE id = :id')->execute(['id' => $id]);
         $pdo->commit();
     } catch (Throwable $e) {

@@ -8,6 +8,7 @@ ini_set('display_errors', '0');
 require __DIR__ . '/src/Response.php';
 require __DIR__ . '/src/Slug.php';
 require __DIR__ . '/src/Auth.php';
+require __DIR__ . '/src/Accounts.php';
 require __DIR__ . '/src/Database.php';
 require __DIR__ . '/src/Uploads.php';
 require __DIR__ . '/src/Mailer.php';
@@ -110,14 +111,12 @@ if ($method === 'POST' && $path === '/admin/logout') {
 
 if ($method === 'GET' && $path === '/admin/me') {
     $admin = require_admin($pdo);
-    json_response(200, [
-        'admin' => [
-            'id' => (int) $admin['id'],
-            'event_id' => $admin['event_id'],
-            'name' => $admin['name'],
-            'email' => $admin['email'],
-        ],
-    ]);
+    handle_admin_me($pdo, $admin);
+}
+
+if ($method === 'POST' && $path === '/admin/session/event') {
+    $admin = require_admin($pdo);
+    handle_switch_session_event($pdo, $admin);
 }
 
 if ($method === 'POST' && $path === '/admin/forgot-password') {

@@ -95,12 +95,15 @@ CREATE TABLE IF NOT EXISTS events (
   KEY idx_events_coupon_code (coupon_code)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
--- admin_users.event_id é o único sinal de papel do sistema:
--- NULL = admin superior (gerencia eventos e seus admins);
--- não-nulo = admin de exatamente um evento (gerencia convidados/presentes/marca daquele evento).
+-- Contas de admin: uma por email. is_super = 1 é o admin superior (gerencia
+-- eventos e seus admins); as demais administram um ou mais eventos, ligadas
+-- por event_admins (migração 021).
+-- event_id ficou por compatibilidade com a API anterior à 021: a API mantém
+-- nele um dos eventos da conta (NULL só no super), ver src/Accounts.php.
 CREATE TABLE IF NOT EXISTS admin_users (
   id            INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   event_id      INT UNSIGNED NULL,
+  is_super      TINYINT(1) NOT NULL DEFAULT 0,
   name          VARCHAR(150) NOT NULL,
   email         VARCHAR(190) NOT NULL,
   password_hash VARCHAR(255) NOT NULL,
@@ -110,11 +113,25 @@ CREATE TABLE IF NOT EXISTS admin_users (
   CONSTRAINT fk_admin_users_event FOREIGN KEY (event_id) REFERENCES events(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+-- Quais eventos cada conta administra (uma conta, vários eventos).
+CREATE TABLE IF NOT EXISTS event_admins (
+  event_id      INT UNSIGNED NOT NULL,
+  admin_user_id INT UNSIGNED NOT NULL,
+  created_at    TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (event_id, admin_user_id),
+  KEY idx_event_admins_user (admin_user_id),
+  CONSTRAINT fk_event_admins_event FOREIGN KEY (event_id) REFERENCES events(id) ON DELETE CASCADE,
+  CONSTRAINT fk_event_admins_user FOREIGN KEY (admin_user_id) REFERENCES admin_users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
 -- Tokens de acesso (Bearer) emitidos no login. Permite logout/expiração
 -- sem depender de cookies entre subdomínios diferentes (front x api).
 CREATE TABLE IF NOT EXISTS admin_sessions (
   id            INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   admin_user_id INT UNSIGNED NOT NULL,
+  -- evento ativo desta sessão (o que o painel mostra); NULL no super-admin.
+  -- Trocar de evento é trocar este valor (POST /admin/session/event).
+  event_id      INT UNSIGNED NULL,
   -- super-admin que abriu esta sessão no painel do evento ("entrar como
   -- admin", suporte); NULL = login normal. Ignora a expiração do evento.
   impersonated_by INT UNSIGNED NULL,
@@ -125,6 +142,8 @@ CREATE TABLE IF NOT EXISTS admin_sessions (
   KEY idx_admin_sessions_user (admin_user_id),
   CONSTRAINT fk_admin_sessions_user
     FOREIGN KEY (admin_user_id) REFERENCES admin_users(id) ON DELETE CASCADE,
+  CONSTRAINT fk_admin_sessions_event
+    FOREIGN KEY (event_id) REFERENCES events(id) ON DELETE CASCADE,
   CONSTRAINT fk_admin_sessions_impersonated_by
     FOREIGN KEY (impersonated_by) REFERENCES admin_users(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
