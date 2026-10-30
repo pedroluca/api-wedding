@@ -115,6 +115,79 @@ function build_event_access_email(string $name, string $loginLink, string $event
     return ['subject' => "Novo evento no seu painel: {$safeEventLabel}", 'html' => $html];
 }
 
+/** 1234.5 → "R$ 1.234,50"; -22.05 → "-R$ 22,05" (como o Intl do front) */
+function format_brl(float $value): string
+{
+    return ($value < 0 ? '-' : '') . 'R$ ' . number_format(abs($value), 2, ',', '.');
+}
+
+/**
+ * Email para o cliente quando o pagamento do pedido feito pelo site é
+ * confirmado: o resumo do que foi contratado e o próximo passo (o acesso ao
+ * painel chega em outro email, quando o evento for criado).
+ *
+ * @param array $items itens do price_breakdown do pedido ({label, amount})
+ * @return array{subject: string, html: string}
+ */
+function build_order_paid_email(string $name, string $eventLabel, array $items, float $total, string $orderLink): array
+{
+    $esc = static fn (string $text): string => htmlspecialchars($text, ENT_QUOTES, 'UTF-8');
+    $firstName = $esc(explode(' ', trim($name))[0]);
+    $safeEventLabel = $esc($eventLabel);
+    $safeLink = $esc($orderLink);
+    $safeTotal = format_brl($total);
+
+    $rows = '';
+    foreach ($items as $item) {
+        $rows .= '<tr><td style="padding:4px 24px 4px 0">' . $esc((string) $item['label']) . '</td>'
+            . '<td style="padding:4px 0;text-align:right">' . format_brl((float) $item['amount']) . '</td></tr>';
+    }
+
+    $html = <<<HTML
+        <p>Olá, {$firstName}! Recebemos o pagamento do seu convite: <strong>{$safeEventLabel}</strong>.</p>
+        <p>Agora a gente prepara tudo. Assim que estiver pronto, você recebe outro email com o acesso ao painel,
+        onde vai personalizar o convite, cadastrar os convidados e acompanhar as confirmações.</p>
+        <table style="border-collapse:collapse">
+          {$rows}
+          <tr><td style="padding:8px 24px 0 0"><strong>Total pago</strong></td>
+          <td style="padding:8px 0 0;text-align:right"><strong>{$safeTotal}</strong></td></tr>
+        </table>
+        <p><a href="{$safeLink}">Ver o seu pedido</a></p>
+        <p>Qualquer dúvida, é só responder este email.</p>
+        HTML;
+
+    // O assunto é texto puro (a Resend não interpreta HTML nele).
+    return ['subject' => "Pagamento confirmado: {$eventLabel}", 'html' => $html];
+}
+
+/**
+ * Aviso para o Presenzo (app.notify_email) sobre um pedido do site: pago
+ * (hora de criar o evento), estornado, ou um pagamento que precisa de olho
+ * humano. $details são linhas "rótulo: valor" em texto puro.
+ *
+ * @param array<string, string> $details
+ * @return array{subject: string, html: string}
+ */
+function build_order_notice_email(string $subject, string $headline, array $details, string $superLink): array
+{
+    $esc = static fn (string $text): string => htmlspecialchars($text, ENT_QUOTES, 'UTF-8');
+
+    $lines = '';
+    foreach ($details as $label => $value) {
+        $lines .= '<li><strong>' . $esc($label) . ':</strong> ' . $esc($value) . '</li>';
+    }
+    $safeHeadline = $esc($headline);
+    $safeLink = $esc($superLink);
+
+    $html = <<<HTML
+        <p>{$safeHeadline}</p>
+        <ul>{$lines}</ul>
+        <p><a href="{$safeLink}">Abrir o pedido no super</a></p>
+        HTML;
+
+    return ['subject' => $subject, 'html' => $html];
+}
+
 /**
  * "Casamento de Fulano e Beltrano" / "Aniversário de Fulano" — usado no
  * assunto/corpo do email de convite (ver build_password_set_email()) pra

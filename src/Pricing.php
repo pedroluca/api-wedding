@@ -154,14 +154,17 @@ function find_usable_coupon(PDO $pdo, string $code, ?int $exceptEventId = null):
 
 /**
  * Usos do cupom: eventos vendidos com ele (events.coupon_code, gravado quando
- * o super-admin aplica o orçamento no evento). Pedir pelo WhatsApp não conta.
+ * o super-admin aplica o orçamento no evento) e pedidos pagos pelo site que
+ * ainda não viraram evento (o pedido que vira evento passa a contar pelo
+ * evento). Pedir pelo WhatsApp e pedido aguardando pagamento não contam.
  */
 function coupon_uses(PDO $pdo, string $code, ?int $exceptEventId = null): int
 {
     $stmt = $pdo->prepare(
-        'SELECT COUNT(*) FROM events WHERE coupon_code = :code AND id <> :except_id'
+        "SELECT (SELECT COUNT(*) FROM events WHERE coupon_code = :code AND id <> :except_id)
+              + (SELECT COUNT(*) FROM orders WHERE coupon_code = :order_code AND status = 'paid')"
     );
-    $stmt->execute(['code' => $code, 'except_id' => $exceptEventId ?? 0]);
+    $stmt->execute(['code' => $code, 'except_id' => $exceptEventId ?? 0, 'order_code' => $code]);
 
     return (int) $stmt->fetchColumn();
 }

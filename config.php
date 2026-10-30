@@ -40,6 +40,29 @@ $config = [
         // produção). Em produção os arquivos existem, então não tem efeito.
         // String vazia desliga o fallback.
         'assets_fallback_url' => 'https://api.presenzo.com.br',
+        // Endereço público desta API, usado para montar a URL do webhook que
+        // vai na preferência do Mercado Pago (a API não tem como saber o
+        // próprio endereço público atrás do proxy da hospedagem).
+        'api_url' => 'http://localhost:8000',
+        // Quem recebe o aviso de pedido pago (e de estorno). Vazio desliga.
+        'notify_email' => 'contato@presenzo.com.br',
+    ],
+    'mercadopago' => [
+        // Access token da conta (APP_USR-...). Vazio desliga o pagamento
+        // online: POST /orders responde 503 e o front esconde "Contratar".
+        'access_token' => '',
+        // "Assinatura secreta" do webhook (Suas integrações → Webhooks no
+        // painel do MP). Vazia, a API não confere a assinatura dos avisos
+        // (só em dev: o pagamento é sempre buscado no MP de qualquer forma).
+        'webhook_secret' => '',
+        // Testes locais apontam para um servidor falso do MP.
+        'api_base' => 'https://api.mercadopago.com',
+        'max_installments' => 4,
+        // Prazo do pedido pendente: depois disso ele expira e a preferência
+        // no MP para de aceitar pagamento.
+        'order_ttl_hours' => 24,
+        // Nome na fatura do cartão (até 13 caracteres).
+        'statement_descriptor' => 'PRESENZO',
     ],
     'access' => [
         // Dias de acesso ao painel admin após a data do evento (event_date),

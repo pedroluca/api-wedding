@@ -26,12 +26,19 @@ function generate_guest_slug(string $name, int $id): string
 }
 
 /**
+ * Endereços do próprio site (rotas do front que vêm antes de /:slug): um
+ * evento com um desses slugs teria o convite inacessível.
+ */
+const RESERVED_EVENT_SLUGS = ['admin', 'super', 'contratar', 'pedido'];
+
+/**
  * Gera o slug público de um evento a partir do(s) nome(s) do(s)
  * anfitrião(ões), ex: "pedro-e-maria" — sem sufixo na grande maioria dos
  * casos, já que é uma URL pública/compartilhada (diferente do link
  * individual do convidado). Só quando esse slug "limpo" já está em uso por
- * outro evento é que entra um sufixo curto e ALEATÓRIO (não o id
- * sequencial do banco, pra não expor quantos eventos já existem).
+ * outro evento (ou é um endereço do site, RESERVED_EVENT_SLUGS) é que entra
+ * um sufixo curto e ALEATÓRIO (não o id sequencial do banco, pra não expor
+ * quantos eventos já existem).
  */
 function generate_event_slug(PDO $pdo, string $hostName, ?string $hostNameSecondary): string
 {
@@ -43,12 +50,17 @@ function generate_event_slug(PDO $pdo, string $hostName, ?string $hostNameSecond
     }
 
     $checkStmt = $pdo->prepare('SELECT 1 FROM events WHERE slug = :slug');
+    $unavailable = static function (string $slug) use ($checkStmt): bool {
+        if (in_array($slug, RESERVED_EVENT_SLUGS, true)) {
+            return true;
+        }
+        $checkStmt->execute(['slug' => $slug]);
+        return (bool) $checkStmt->fetch();
+    };
 
     $slug = $base;
-    $checkStmt->execute(['slug' => $slug]);
-    while ($checkStmt->fetch()) {
+    while ($unavailable($slug)) {
         $slug = $base . '-' . bin2hex(random_bytes(2));
-        $checkStmt->execute(['slug' => $slug]);
     }
 
     return $slug;

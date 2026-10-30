@@ -6,11 +6,17 @@ declare(strict_types=1);
  * GET /pricing
  * Tabela de preços em vigor: valores fixos (base por tipo de evento e
  * adicionais), faixas de convidados e parâmetros dos planos. Pública: monta
- * as opções do simulador da home e da calculadora do super-admin.
+ * as opções do simulador da home e da calculadora do super-admin. checkout
+ * diz se dá pra contratar pelo site (pagamento online ligado).
  */
-function handle_get_pricing(PDO $pdo): void
+function handle_get_pricing(PDO $pdo, array $config): void
 {
-    json_response(200, pricing_payload($pdo));
+    json_response(200, pricing_payload($pdo) + [
+        'checkout' => [
+            'enabled' => mp_enabled($config),
+            'max_installments' => (int) ($config['mercadopago']['max_installments'] ?? 1),
+        ],
+    ]);
 }
 
 function pricing_payload(PDO $pdo): array
@@ -104,25 +110,36 @@ function read_sent_quote(PDO $pdo, array $body, ?int $eventId = null): array
     // O evento salvo é sempre o da URL (na criação, nenhum), nunca o do corpo.
     $parsed = ['event_id' => $eventId] + read_quote_choice($pdo, $choice);
     $quote = compute_quote($pdo, $parsed);
-    $couponCode = $quote['coupon']['code'] ?? null;
 
     return [
-        'price_breakdown' => json_encode([
-            'choice' => [
-                'event_type' => $parsed['event_type'],
-                'max_guests' => $parsed['tier']['max_guests'],
-                'gifts' => $parsed['gifts'],
-                'premium' => $parsed['premium'],
-                'extra_admins' => $parsed['extra_admins'],
-                'coupon' => $couponCode,
-            ],
-            'items' => $quote['items'],
-            'subtotal' => $quote['subtotal'],
-            'discount' => $quote['discount'],
-            'total' => $quote['total'],
-            'quoted_at' => date('Y-m-d H:i:s'),
-        ], JSON_UNESCAPED_UNICODE),
-        'coupon_code' => $couponCode,
+        'price_breakdown' => json_encode(quote_breakdown($parsed, $quote), JSON_UNESCAPED_UNICODE),
+        'coupon_code' => $quote['coupon']['code'] ?? null,
+    ];
+}
+
+/**
+ * O orçamento como foi vendido (events.price_breakdown e orders.price_breakdown):
+ * a escolha e os itens do dia. Mudar a tabela depois não muda o que foi vendido.
+ *
+ * @param array $parsed escolha de read_quote_choice()
+ * @param array $quote resultado de compute_quote()
+ */
+function quote_breakdown(array $parsed, array $quote): array
+{
+    return [
+        'choice' => [
+            'event_type' => $parsed['event_type'],
+            'max_guests' => $parsed['tier']['max_guests'],
+            'gifts' => $parsed['gifts'],
+            'premium' => $parsed['premium'],
+            'extra_admins' => $parsed['extra_admins'],
+            'coupon' => $quote['coupon']['code'] ?? null,
+        ],
+        'items' => $quote['items'],
+        'subtotal' => $quote['subtotal'],
+        'discount' => $quote['discount'],
+        'total' => $quote['total'],
+        'quoted_at' => date('Y-m-d H:i:s'),
     ];
 }
 
