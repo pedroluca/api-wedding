@@ -93,6 +93,29 @@ function build_password_set_email(string $name, string $link, string $purpose, ?
 }
 
 /**
+ * Email para quem já tem conta e passou a administrar mais um evento: não
+ * há senha a definir, então o link leva ao login, e no painel a pessoa
+ * troca de evento.
+ *
+ * @return array{subject: string, html: string}
+ */
+function build_event_access_email(string $name, string $loginLink, string $eventLabel): array
+{
+    $safeName = htmlspecialchars($name, ENT_QUOTES, 'UTF-8');
+    $safeLink = htmlspecialchars($loginLink, ENT_QUOTES, 'UTF-8');
+    $safeEventLabel = htmlspecialchars($eventLabel, ENT_QUOTES, 'UTF-8');
+
+    $html = <<<HTML
+        <p>Olá, {$safeName}! Você agora também administra o evento <strong>{$safeEventLabel}</strong>.</p>
+        <p>Entre com o mesmo email e a mesma senha de sempre: o evento novo aparece na lista dos seus eventos.</p>
+        <p><a href="{$safeLink}">Entrar no painel</a></p>
+        <p>Se você não esperava este email, pode ignorá-lo com segurança.</p>
+        HTML;
+
+    return ['subject' => "Novo evento no seu painel: {$safeEventLabel}", 'html' => $html];
+}
+
+/**
  * "Casamento de Fulano e Beltrano" / "Aniversário de Fulano" — usado no
  * assunto/corpo do email de convite (ver build_password_set_email()) pra
  * quem recebe o convite conseguir confirmar de cara se é o evento certo.

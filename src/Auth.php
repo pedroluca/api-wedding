@@ -26,6 +26,12 @@ function bearer_token_from_request(): ?string
 /**
  * Valida o Bearer token e retorna os dados do admin autenticado
  * (interrompe a requisição com 401 se inválido/expirado).
+ *
+ * $admin['event_id'] é o evento ativo da sessão (admin_sessions.event_id),
+ * não da conta: uma conta pode ter vários eventos (ver src/Accounts.php).
+ * Sessão sem evento de uma conta de cliente (aberta pela API anterior à
+ * 021) usa o admin_users.event_id da conta. Se a conta não administra mais
+ * o evento da sessão, a sessão deixa de valer.
  */
 function require_admin(PDO $pdo): array
 {
@@ -35,9 +41,13 @@ function require_admin(PDO $pdo): array
     }
 
     $stmt = $pdo->prepare(
-        'SELECT au.id, au.event_id, au.name, au.email, s.impersonated_by
+        'SELECT au.id, au.is_super, au.name, au.email, s.impersonated_by,
+                COALESCE(s.event_id, CASE WHEN au.is_super = 0 THEN au.event_id END) AS event_id,
+                (ea.admin_user_id IS NOT NULL OR au.event_id = COALESCE(s.event_id, au.event_id)) AS is_member
          FROM admin_sessions s
          INNER JOIN admin_users au ON au.id = s.admin_user_id
+         LEFT JOIN event_admins ea
+           ON ea.admin_user_id = au.id AND ea.event_id = COALESCE(s.event_id, au.event_id)
          WHERE s.token = :token AND s.expires_at > NOW()'
     );
     $stmt->execute(['token' => $token]);
@@ -46,24 +56,28 @@ function require_admin(PDO $pdo): array
     if (!$admin) {
         json_error(401, 'Sessão inválida ou expirada.');
     }
+    if ($admin['event_id'] !== null && !$admin['is_member']) {
+        json_error(401, 'Você não tem mais acesso a este evento.');
+    }
 
     $admin['id'] = (int) $admin['id'];
+    $admin['is_super'] = (bool) $admin['is_super'];
     $admin['event_id'] = $admin['event_id'] !== null ? (int) $admin['event_id'] : null;
     $admin['impersonated_by'] = $admin['impersonated_by'] !== null ? (int) $admin['impersonated_by'] : null;
     $admin['_token'] = $token;
+    unset($admin['is_member']);
 
     return $admin;
 }
 
 /**
  * Como require_admin(), mas exige que a sessão seja de um admin superior
- * (event_id NULL). event_id IS NULL é o único sinal de papel do sistema —
- * ver comentário em sql/schema.sql sobre admin_users.event_id.
+ * (admin_users.is_super, ver sql/schema.sql).
  */
 function require_super_admin(PDO $pdo): array
 {
     $admin = require_admin($pdo);
-    if ($admin['event_id'] !== null) {
+    if (!$admin['is_super']) {
         json_error(403, 'Acesso restrito ao super-admin.');
     }
 
@@ -101,14 +115,23 @@ function require_event_admin(PDO $pdo): array
     $stmt->execute(['id' => $admin['event_id']]);
     $event = $stmt->fetch();
 
-    if (
-        $event
-        && event_entitlements($event)['access_expires']
-        && $event['access_expires_at'] !== null
-        && strtotime($event['access_expires_at']) <= time()
-    ) {
+    if ($event && event_access_expired($event)) {
         json_error(403, 'O acesso a este evento expirou. Entre em contato com o suporte.', 'access_expired');
     }
 
     return $admin;
+}
+
+/**
+ * O painel do evento já fechou? O prazo vem de access_expires_at, e o
+ * plano Ilimitado nunca fecha (ele já grava NULL; aqui é defesa extra).
+ * Também marca os eventos encerrados na lista "Seus eventos".
+ *
+ * @param array $event linha de events com access_expires_at, plan, gifts_enabled, guest_limit e admin_limit
+ */
+function event_access_expired(array $event): bool
+{
+    return event_entitlements($event)['access_expires']
+        && $event['access_expires_at'] !== null
+        && strtotime($event['access_expires_at']) <= time();
 }
